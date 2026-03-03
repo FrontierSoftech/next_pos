@@ -346,6 +346,10 @@ def get_offers(pos_profile: str) -> List[Dict]:
 
 		offers = []
 
+		# Get offers from POS Offer doctype (custom)
+		pos_offers = _get_pos_offer_records(profile.company, pos_profile, date)
+		offers.extend(pos_offers)
+
 		# Get offers from promotional schemes
 		scheme_offers = _get_promotional_scheme_offers(profile.company, date)
 		offers.extend(scheme_offers)
@@ -359,6 +363,66 @@ def get_offers(pos_profile: str) -> List[Dict]:
 	except Exception as e:
 		frappe.log_error(f"Error fetching offers: {str(e)}", "Offers API")
 		return []
+
+
+def _get_pos_offer_records(company: str, pos_profile: str, date: str) -> List[Offer]:
+	"""Fetch offers from the POS Offer doctype"""
+	rows = frappe.db.sql("""
+		SELECT
+			name, title, description, disable, apply_on, offer,
+			company, pos_profile, item, item_group, brand,
+			valid_from, valid_upto, coupon_based, auto,
+			min_qty, max_qty, min_amt, max_amt,
+			discount_type, rate, discount_amount, discount_percentage
+		FROM `tabPOS Offer`
+		WHERE
+			disable = 0
+			AND company = %(company)s
+			AND (pos_profile IS NULL OR pos_profile = '' OR pos_profile = %(pos_profile)s)
+			AND (valid_from IS NULL OR valid_from <= %(date)s)
+			AND (valid_upto IS NULL OR valid_upto >= %(date)s)
+		ORDER BY name
+	""", {"company": company, "pos_profile": pos_profile, "date": date}, as_dict=1)
+
+	offers = []
+	for row in rows:
+		apply_on = row.get("apply_on") or "Transaction"
+
+		eligible_items = [row["item"]] if apply_on == ApplyOn.ITEM_CODE and row.get("item") else []
+		eligible_item_groups = [row["item_group"]] if apply_on == ApplyOn.ITEM_GROUP and row.get("item_group") else []
+		eligible_brands = [row["brand"]] if apply_on == ApplyOn.BRAND and row.get("brand") else []
+
+		# Map discount_type field to rate_or_discount style for frontend
+		discount_type = row.get("discount_type") or "Discount Percentage"
+
+		offer = Offer(
+			name=row["name"],
+			title=row.get("title") or row["name"],
+			description=row.get("description") or "",
+			apply_on=apply_on,
+			offer=row.get("offer") or "Item Price",
+			auto=1 if row.get("auto") else 0,
+			coupon_based=1 if row.get("coupon_based") else 0,
+			min_qty=flt(row.get("min_qty", 0)),
+			max_qty=flt(row.get("max_qty", 0)),
+			min_amt=flt(row.get("min_amt", 0)),
+			max_amt=flt(row.get("max_amt", 0)),
+			discount_type=discount_type,
+			rate=flt(row.get("rate", 0)),
+			discount_amount=flt(row.get("discount_amount", 0)),
+			discount_percentage=flt(row.get("discount_percentage", 0)),
+			valid_from=str(row["valid_from"]) if row.get("valid_from") else None,
+			valid_upto=str(row["valid_upto"]) if row.get("valid_upto") else None,
+			source="POS Offer",
+			promotional_scheme=None,
+			promotional_scheme_id=None,
+			eligible_items=eligible_items,
+			eligible_item_groups=eligible_item_groups,
+			eligible_brands=eligible_brands,
+		)
+		offers.append(offer)
+
+	return offers
 
 
 def _get_promotional_scheme_offers(company: str, date: str) -> List[Offer]:
