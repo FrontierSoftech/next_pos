@@ -1073,9 +1073,10 @@ const searchAccountsResource = createResource({
 // Resource for searching Finance Lender customers
 const searchFinanceLendersResource = createResource({
 	url: "pos_next.api.finance_lender.search_finance_lenders",
-	makeParams({ search_term }) {
+	makeParams({ search_term, pos_profile }) {
 		return {
 			search_term: search_term || '',
+			pos_profile: pos_profile || '',
 		}
 	},
 	auto: false,
@@ -1635,7 +1636,8 @@ async function searchFinanceLender(index) {
 		} else if (row.mode === 'Customer') {
 			// Search for customers in Finance Lender group
 			const result = await searchFinanceLendersResource.submit({
-				search_term: searchTerm
+				search_term: searchTerm,
+				pos_profile: props.posProfile,
 			})
 			console.log('[PaymentDialog] Customer search result:', result)
 			row.lenderOptions = (result || []).map(cust => ({
@@ -1767,6 +1769,7 @@ function completePayment() {
 		.map(adv => ({
 			reference_type: adv.reference_type,
 			reference_name: adv.reference_name,
+			reference_row: adv.reference_row || null,
 			remarks: adv.remarks || '',
 			advance_amount: adv.advance_amount,
 			allocated_amount: adv.allocated_amount,

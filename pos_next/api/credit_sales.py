@@ -498,7 +498,7 @@ def get_credit_sale_summary(pos_profile):
 def get_advances(customer, company, posting_date=None):
 	"""
 	Get available advance payments for a customer.
-	This fetches unallocated Payment Entry amounts that can be applied to a new invoice.
+	This fetches unallocated Payment Entry and Journal Entry amounts that can be applied to a new invoice.
 
 	The data structure matches Sales Invoice Advance child table format.
 
@@ -526,17 +526,20 @@ def get_advances(customer, company, posting_date=None):
 	if not party_account:
 		return []
 
+	result = []
+
 	# Fetch unallocated Payment Entries for this customer
-	advances = frappe.db.sql("""
+	payment_advances = frappe.db.sql("""
 		SELECT
 			pe.name as reference_name,
 			'Payment Entry' as reference_type,
 			pe.posting_date,
-			pe.paid_amount,
 			pe.unallocated_amount as advance_amount,
 			pe.mode_of_payment,
 			pe.reference_no,
-			pe.remarks
+			pe.remarks,
+			NULL as reference_row,
+			1 as exchange_rate
 		FROM `tabPayment Entry` pe
 		WHERE
 			pe.party_type = 'Customer'
@@ -551,16 +554,54 @@ def get_advances(customer, company, posting_date=None):
 		"company": company
 	}, as_dict=True)
 
-	result = []
-	for row in advances:
+	for row in payment_advances:
 		result.append({
-			"reference_type": row.reference_type,
+			"reference_type": "Payment Entry",
 			"reference_name": row.reference_name,
+			"reference_row": None,
 			"posting_date": row.posting_date,
 			"remarks": row.remarks or f"{row.mode_of_payment or ''} - {row.reference_no or ''}".strip(" -"),
 			"advance_amount": flt(row.advance_amount),
-			"allocated_amount": 0,  # User will set this
-			"ref_exchange_rate": 1,  # Assuming same currency
+			"allocated_amount": 0,
+			"ref_exchange_rate": 1,
+		})
+
+	# Fetch unallocated Journal Entry advances for this customer
+	# Conditions: is_advance = 'Yes', docstatus = 1, credit_in_account_currency > 0,
+	# reference_name is null/empty (unallocated)
+	je_advances = frappe.db.sql("""
+		SELECT
+			je.name as reference_name,
+			'Journal Entry' as reference_type,
+			je.posting_date,
+			je.remark as remarks,
+			jea.name as reference_row,
+			jea.credit_in_account_currency as advance_amount,
+			jea.exchange_rate
+		FROM `tabJournal Entry` je
+		INNER JOIN `tabJournal Entry Account` jea ON je.name = jea.parent
+		WHERE
+			jea.party_type = 'Customer'
+			AND jea.party = %(customer)s
+			AND jea.is_advance = 'Yes'
+			AND je.docstatus = 1
+			AND jea.credit_in_account_currency > 0
+			AND (jea.reference_name IS NULL OR jea.reference_name = '')
+		ORDER BY je.posting_date ASC
+	""", {
+		"customer": customer,
+	}, as_dict=True)
+
+	for row in je_advances:
+		result.append({
+			"reference_type": "Journal Entry",
+			"reference_name": row.reference_name,
+			"reference_row": row.reference_row,
+			"posting_date": row.posting_date,
+			"remarks": row.remarks or row.reference_name,
+			"advance_amount": flt(row.advance_amount),
+			"allocated_amount": 0,
+			"ref_exchange_rate": flt(row.exchange_rate) or 1,
 		})
 
 	return result

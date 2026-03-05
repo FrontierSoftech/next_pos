@@ -54,20 +54,28 @@ def search_accounts(search_term="", company=None, limit=20):
 
 
 @frappe.whitelist()
-def search_finance_lenders(search_term="", limit=20):
+def search_finance_lenders(search_term="", pos_profile=None, limit=20):
     """
-    Search for customers in the 'Finance Lender' customer group.
+    Search for customers in the 'Finance Lender' customer group,
+    filtered by the POS Profile's branch.
 
     Args:
         search_term: Search string to filter customers
+        pos_profile: POS Profile name to determine branch filter
         limit: Maximum number of results to return
 
     Returns:
         List of customer dictionaries with name and customer_name
     """
-    # Use parameterized queries for safety
     conditions = ["customer_group = 'Finance Lender'"]
     params = {}
+
+    # Filter by branch matching the POS Profile's branch
+    if pos_profile:
+        branch = frappe.db.get_value("POS Profile", pos_profile, "branch")
+        if branch:
+            conditions.append("custom_branch = %(branch)s")
+            params["branch"] = branch
 
     if search_term:
         conditions.append("(name LIKE %(search_pattern)s OR customer_name LIKE %(search_pattern)s)")
@@ -75,7 +83,6 @@ def search_finance_lenders(search_term="", limit=20):
 
     where_clause = " AND ".join(conditions)
 
-    # Query customers in Finance Lender group
     customers = frappe.db.sql(
         f"""
         SELECT

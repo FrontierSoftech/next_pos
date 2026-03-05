@@ -449,7 +449,7 @@ def update_invoice(data):
 
         # Determine correct tax template based on customer's GST state
         # This handles CGST+SGST (intra-state) vs IGST (inter-state)
-        # Uses comprehensive GST tax utilities that consider customer address
+        # Uses comprehensive GST tax utilities that consider customer address and branch
         tax_template = data.get("taxes_and_charges")
         shipping_address = data.get("shipping_address_name") or invoice_doc.get("shipping_address_name")
         
@@ -459,10 +459,12 @@ def update_invoice(data):
             # Auto-detect tax template using comprehensive GST utilities
             try:
                 from pos_next.api.gst_tax import get_gst_tax_template
+                # Pass branch if available for better non-GST customer handling
                 detected_template = get_gst_tax_template(
                     invoice_doc.company,
                     customer=invoice_doc.customer,
-                    shipping_address=shipping_address
+                    shipping_address=shipping_address,
+                    branch=invoice_doc.get("branch")
                 )
                 if detected_template:
                     invoice_doc.taxes_and_charges = detected_template
@@ -722,6 +724,31 @@ def submit_invoice(invoice=None, data=None):
             except Exception:
                 pass  # Branch is optional, continue without it
 
+        # Handle place_of_supply based on customer type
+        # For non-GST customers: Use branch's custom_place_of_supply
+        # For GST customers: Use GST utilities to determine from GSTIN/address
+        if invoice_doc.customer:
+            try:
+                from pos_next.api.gst_tax import get_place_of_supply as get_pos_gst
+                
+                # Only set if not already set
+                if not invoice_doc.get("place_of_supply"):
+                    # Get place of supply using unified logic
+                    pos = get_pos_gst(
+                        invoice_doc.customer,
+                        invoice_doc.company,
+                        shipping_address=invoice_doc.get("shipping_address_name"),
+                        branch=invoice_doc.get("branch")
+                    )
+                    if pos:
+                        invoice_doc.place_of_supply = pos
+            except Exception as e:
+                # Log error but don't fail the invoice submission
+                frappe.log_error(
+                    f"Error setting place_of_supply: {str(e)}",
+                    "Place of Supply Error"
+                )
+
         # Set accounts for all payment methods before saving
         for payment in invoice_doc.payments:
             if payment.mode_of_payment:
@@ -774,6 +801,25 @@ def submit_invoice(invoice=None, data=None):
         # paid_amount adjustment for finance lender payments is handled by
         # sales_invoice_hooks.validate and sales_invoice_hooks.before_save hooks
 
+        # Handle advances (Sales Invoice Advance child table) in submit_invoice
+        # Explicitly set advances so reference_row (needed for Journal Entry advances) is preserved
+        # Check data first (passed explicitly from frontend), then fall back to invoice dict
+        advances_data = data.get("advances") or invoice.get("advances")
+        frappe.logger().info(f"[POS Advances] advances_data from data/invoice: {advances_data}")
+        if advances_data and isinstance(advances_data, list) and len(advances_data) > 0:
+            invoice_doc.set("advances", [])
+            for adv in advances_data:
+                invoice_doc.append("advances", {
+                    "reference_type": adv.get("reference_type"),
+                    "reference_name": adv.get("reference_name"),
+                    "reference_row": adv.get("reference_row") or "",
+                    "remarks": adv.get("remarks") or "",
+                    "advance_amount": flt(adv.get("advance_amount", 0)),
+                    "allocated_amount": flt(adv.get("allocated_amount", 0)),
+                    "ref_exchange_rate": flt(adv.get("ref_exchange_rate") or 1),
+                })
+            frappe.logger().info(f"[POS Advances] Set {len(invoice_doc.advances)} advance rows on invoice_doc before save")
+
         # Auto-set batch numbers for returns
         _auto_set_return_batches(invoice_doc)
 
@@ -802,6 +848,30 @@ def submit_invoice(invoice=None, data=None):
         # This ensures add_remarks() in before_submit won't overwrite with "No Remarks"
         if remarks_from_invoice:
             invoice_doc.remarks = remarks_from_invoice
+
+        # Log advances state after save, before submit
+        frappe.logger().info(f"[POS Advances] After save, invoice_doc.advances count: {len(invoice_doc.get('advances', []))}")
+        for adv in invoice_doc.get("advances", []):
+            frappe.logger().info(f"[POS Advances] Row: ref_type={adv.reference_type}, ref_name={adv.reference_name}, ref_row={adv.reference_row}, allocated={adv.allocated_amount}")
+
+        # Re-set advances after save in case validate cleared them
+        if advances_data and isinstance(advances_data, list) and len(advances_data) > 0:
+            current_advances = invoice_doc.get("advances", [])
+            allocated_in_doc = sum(flt(a.allocated_amount) for a in current_advances)
+            allocated_in_data = sum(flt(a.get("allocated_amount", 0)) for a in advances_data)
+            if allocated_in_doc < allocated_in_data:
+                frappe.logger().warning(f"[POS Advances] Advances lost after save! Resetting. Doc had {allocated_in_doc}, data has {allocated_in_data}")
+                invoice_doc.set("advances", [])
+                for adv in advances_data:
+                    invoice_doc.append("advances", {
+                        "reference_type": adv.get("reference_type"),
+                        "reference_name": adv.get("reference_name"),
+                        "reference_row": adv.get("reference_row") or "",
+                        "remarks": adv.get("remarks") or "",
+                        "advance_amount": flt(adv.get("advance_amount", 0)),
+                        "allocated_amount": flt(adv.get("allocated_amount", 0)),
+                        "ref_exchange_rate": flt(adv.get("ref_exchange_rate") or 1),
+                    })
 
         # Submit invoice with error handling
         try:
@@ -844,6 +914,29 @@ def submit_invoice(invoice=None, data=None):
 
             # Re-raise the original submission error
             raise submit_error
+
+        # Reconcile advances against the submitted invoice.
+        # ERPNext's on_submit skips update_against_document_in_jv() for POS invoices (is_pos=1).
+        # We must call it explicitly so Payment Entry / Journal Entry advances get linked.
+        if advances_data and isinstance(advances_data, list) and len(advances_data) > 0:
+            try:
+                submitted_invoice = frappe.get_doc("Sales Invoice", invoice_doc.name)
+                frappe.logger().info(f"[POS Advances] After submit, advances on doc: {len(submitted_invoice.get('advances', []))}")
+                if submitted_invoice.get("advances"):
+                    submitted_invoice.flags.ignore_permissions = True
+                    frappe.flags.ignore_account_permission = True
+                    submitted_invoice.update_against_document_in_jv()
+                    frappe.logger().info(f"[POS Advances] update_against_document_in_jv completed")
+                else:
+                    frappe.logger().warning(f"[POS Advances] No advances on submitted invoice, skipping reconciliation")
+            except Exception as adv_error:
+                frappe.log_error(
+                    title="POS Advance Reconciliation Error",
+                    message=f"Invoice: {invoice_doc.name}, Error: {str(adv_error)}\n{frappe.get_traceback()}",
+                    reference_doctype="Sales Invoice",
+                    reference_name=invoice_doc.name,
+                )
+                frappe.logger().error(f"[POS Advances] Reconciliation failed: {str(adv_error)}")
 
         # Force-write remarks directly to DB after submit
         # This bypasses ORM hooks that may have cleared it during submit lifecycle
@@ -1402,15 +1495,102 @@ def apply_offers(invoice_data, selected_offers=None):
         if not items:
             return {"items": []}
 
+        # --- POS Offer records (tabPOS Offer) ---
+        # These are custom offer records managed in POS Next. They are applied
+        # directly here without going through the ERPNext pricing engine.
+        pos_offer_names = set()
+        pricing_rule_names = set()
+        if selected_offer_names:
+            existing_pos_offers = {
+                r.name for r in frappe.get_all(
+                    "POS Offer",
+                    filters={"name": ["in", list(selected_offer_names)]},
+                    fields=["name"],
+                )
+            }
+            pos_offer_names = selected_offer_names & existing_pos_offers
+            pricing_rule_names = selected_offer_names - pos_offer_names
+        else:
+            pricing_rule_names = selected_offer_names
+
+        prepared_items_for_pos_offers = [frappe._dict(row) for row in items]
+        applied_pos_offer_rules = set()
+
+        for offer_name in pos_offer_names:
+            pos_offer = frappe.get_cached_doc("POS Offer", offer_name)
+            if pos_offer.disable:
+                continue
+
+            apply_on = pos_offer.apply_on or "Transaction"
+            discount_type = pos_offer.discount_type or "Discount Percentage"
+            discount_pct = flt(pos_offer.discount_percentage)
+            discount_amt = flt(pos_offer.discount_amount)
+            fixed_rate = flt(pos_offer.rate)
+            offer_applied = False
+
+            for item_doc in prepared_items_for_pos_offers:
+                item_code = item_doc.get("item_code")
+                if not item_code:
+                    continue
+
+                # Check eligibility based on apply_on
+                if apply_on == "Item Code" and item_code != pos_offer.item:
+                    continue
+                elif apply_on == "Item Group":
+                    ig = item_doc.get("item_group") or frappe.get_cached_value("Item", item_code, "item_group")
+                    if ig != pos_offer.item_group:
+                        continue
+                elif apply_on == "Brand":
+                    brand = item_doc.get("brand") or frappe.get_cached_value("Item", item_code, "brand")
+                    if brand != pos_offer.brand:
+                        continue
+                # "Transaction" applies to all items
+
+                qty = flt(item_doc.get("qty") or item_doc.get("quantity") or 0)
+                plr = flt(item_doc.get("price_list_rate") or item_doc.get("rate") or 0)
+
+                if discount_type == "Discount Percentage" and discount_pct:
+                    item_doc.discount_percentage = discount_pct
+                    item_doc.discount_amount = plr * qty * discount_pct / 100
+                elif discount_type == "Discount Amount" and discount_amt:
+                    item_doc.discount_amount = discount_amt * qty
+                    item_doc.discount_percentage = (discount_amt / plr * 100) if plr else 0
+                elif discount_type == "Fixed Rate" and fixed_rate is not None:
+                    item_doc.rate = fixed_rate
+                    item_doc.discount_percentage = ((plr - fixed_rate) / plr * 100) if plr else 0
+                    item_doc.discount_amount = (plr - fixed_rate) * qty
+
+                item_doc.setdefault("pricing_rules", [])
+                if offer_name not in item_doc["pricing_rules"]:
+                    item_doc["pricing_rules"].append(offer_name)
+                offer_applied = True
+
+            if offer_applied:
+                applied_pos_offer_rules.add(offer_name)
+
+        # If only POS Offer names were selected (no Pricing Rules), return early
+        if selected_offer_names and not pricing_rule_names:
+            return {
+                "items": [dict(i) for i in prepared_items_for_pos_offers],
+                "free_items": [],
+                "applied_pricing_rules": sorted(applied_pos_offer_rules),
+            }
+
         if not invoice.get("pos_profile") or not erpnext_apply_pricing_rule:
             # Either no POS profile supplied or ERPNext promotional engine unavailable
-            return {"items": items}
+            return {
+                "items": [dict(i) for i in prepared_items_for_pos_offers],
+                "free_items": [],
+                "applied_pricing_rules": sorted(applied_pos_offer_rules),
+            }
 
         profile = frappe.get_doc("POS Profile", invoice.get("pos_profile"))
 
         pricing_items = []
         index_map = []
-        prepared_items = [frappe._dict(row) for row in items]
+        # Use prepared_items_for_pos_offers so any POS Offer discounts already
+        # applied above are preserved when the ERPNext engine runs too.
+        prepared_items = prepared_items_for_pos_offers
 
         for idx, item in enumerate(prepared_items):
             item_code = item.get("item_code")
@@ -1697,7 +1877,7 @@ def apply_offers(invoice_data, selected_offers=None):
         return {
             "items": [dict(item) for item in prepared_items],
             "free_items": [dict(item) for item in free_items],
-            "applied_pricing_rules": sorted(applied_rules),
+            "applied_pricing_rules": sorted(applied_rules | applied_pos_offer_rules),
         }
     except Exception as e:
         frappe.log_error(frappe.get_traceback(), "Apply Offers Error")

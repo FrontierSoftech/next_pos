@@ -243,10 +243,10 @@
                                         </svg>
                                         <span class="text-[11px] font-bold text-green-700">{{ __('Offers') }}</span>
                                         <span
-                                                v-if="appliedOfferCount > 0 || offersStore.autoEligibleCount > 0"
+                                                v-if="appliedOfferCount > 0 || offersStore.allEligibleOffers.length > 0"
                                                 class="bg-green-600 text-white text-[9px] font-bold rounded-full px-1.5 py-0.5 flex-shrink-0 min-w-[16px] text-center"
                                         >
-                                                {{ appliedOfferCount > 0 ? appliedOfferCount : offersStore.autoEligibleCount }}
+                                                {{ appliedOfferCount > 0 ? appliedOfferCount : offersStore.allEligibleOffers.length }}
                                         </span>
                                 </button>
 
@@ -811,6 +811,7 @@ const emit = defineEmits([
 	"remove-item",        // (itemCode, uom?) - Remove item from cart
 	"select-customer",    // (customer) - Select/change customer
 	"create-customer",    // (searchText) - Open create customer dialog
+	"edit-customer",      // (customer) - Open edit customer dialog with pre-filled data
 	"proceed-to-payment", // () - Navigate to payment screen
 	"clear-cart",         // () - Clear all items from cart
 	"save-draft",         // () - Save current cart as draft/hold order
@@ -1182,12 +1183,11 @@ function selectCustomer(cust) {
 }
 
 /**
- * Switch to edit/search mode for customer.
- * Saves current customer to allow restoring on blur.
+ * Open edit dialog for the currently selected customer.
+ * Emits 'edit-customer' with the current customer object.
  */
-async function editCustomer() {
-	previousCustomer.value = props.customer
-	await clearCustomer()
+function editCustomer() {
+	emit("edit-customer", props.customer)
 }
 
 /**

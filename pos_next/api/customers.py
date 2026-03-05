@@ -37,13 +37,41 @@ def get_customers(search_term="", pos_profile=None, limit=20):
                 filters["customer_group"] = profile_doc.customer_group
                 frappe.logger().debug(f"Filtering by customer_group: {profile_doc.customer_group}")
 
+        # Only show customers whose customer group has custom_show_in_pos = 1
+        # If the custom field doesn't exist, return all customer groups
+        pos_groups = []
+        try:
+            pos_groups = frappe.get_all(
+                "Customer Group",
+                filters={"custom_show_in_pos": 1},
+                pluck="name",
+            )
+        except Exception as e:
+            # custom_show_in_pos field doesn't exist, fallback to all groups
+            # This can be frappe.db.ProgrammingError, MySQLdb.OperationalError, etc.
+            frappe.logger().debug(f"custom_show_in_pos field not found ({str(e)}), using all customer groups")
+            try:
+                pos_groups = frappe.get_all(
+                    "Customer Group",
+                    pluck="name",
+                )
+            except Exception as fallback_e:
+                frappe.logger().warning(f"Could not fetch customer groups: {str(fallback_e)}")
+                pos_groups = []
+        
+        if pos_groups:
+            filters["customer_group"] = ["in", pos_groups]
+        else:
+            # No groups found — return all customers without group filter
+            frappe.logger().debug("No customer groups found, returning all customers")
+
         # Return all customers (for client-side filtering)
         filters["disabled"] = 0
         customer_limit = limit if limit not in (None, 0) else frappe.db.count("Customer", filters)
         result = frappe.get_all(
             "Customer",
             filters=filters,
-            fields=["name", "customer_name", "mobile_no", "email_id", "custom_party_name_for_print", "customer_group"],
+            fields=["name", "customer_name", "mobile_no", "email_id", "custom_party_name_for_print", "customer_group", "custom_profession", "gstin", "gst_category", "customer_type"],
             limit=customer_limit,
             order_by="customer_name asc",
         )
@@ -109,6 +137,71 @@ def get_customer_details(customer):
         frappe.throw(_("Customer is required"))
 
     return frappe.get_cached_doc("Customer", customer).as_dict()
+
+
+@frappe.whitelist()
+def update_customer(customer_name, updates):
+    """
+    Update customer fields from POS, including email via linked Contact.
+
+    Args:
+        customer_name (str): Customer document name
+        updates (dict): Fields to update on the Customer doc
+                        Special key 'email_id' updates the linked Contact
+
+    Returns:
+        dict: Updated customer fields
+    """
+    if not frappe.has_permission("Customer", "write"):
+        frappe.throw(_("You don't have permission to edit customers"), frappe.PermissionError)
+
+    if not customer_name:
+        frappe.throw(_("Customer name is required"))
+
+    if isinstance(updates, str):
+        import json
+        updates = json.loads(updates)
+
+    customer = frappe.get_doc("Customer", customer_name)
+
+    # Extract email_id — needs to go to Contact, not Customer directly
+    new_email = updates.pop("email_id", None)
+
+    # Update direct Customer fields
+    for field, value in updates.items():
+        if hasattr(customer, field):
+            setattr(customer, field, value)
+
+    customer.save()
+
+    # Update email via linked Contact
+    if new_email:
+        contacts = frappe.get_all(
+            "Contact",
+            filters=[
+                ["Dynamic Link", "link_doctype", "=", "Customer"],
+                ["Dynamic Link", "link_name", "=", customer_name],
+            ],
+            fields=["name"],
+            limit=1,
+        )
+        if contacts:
+            contact = frappe.get_doc("Contact", contacts[0].name)
+            if contact.email_ids:
+                contact.email_ids[0].email_id = new_email
+            else:
+                contact.append("email_ids", {"email_id": new_email, "is_primary": 1})
+            contact.save()
+
+    # Return fresh customer data with email_id
+    result = frappe.get_value(
+        "Customer",
+        customer_name,
+        ["name", "customer_name", "mobile_no", "email_id", "custom_party_name_for_print",
+         "customer_group", "custom_profession", "gstin", "gst_category", "customer_type"],
+        as_dict=True,
+    )
+    return result
 
 
 @frappe.whitelist()

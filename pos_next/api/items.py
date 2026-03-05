@@ -388,6 +388,10 @@ def search_by_barcode(barcode, pos_profile):
 			item_code = frappe.db.get_value("Item", {"name": barcode})
 			barcode_uom = None
 
+			# Try searching by custom_alias field
+			if not item_code:
+				item_code = frappe.db.get_value("Item", {"custom_alias": barcode, "disabled": 0})
+
 			# If still not found, try searching in Serial No table
 		found_serial_no = None
 		if not item_code:

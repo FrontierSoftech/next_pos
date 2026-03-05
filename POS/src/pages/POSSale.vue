@@ -221,6 +221,7 @@
 						@remove-item="(itemCode, uom) => cartStore.removeItem(itemCode, uom)"
 						@select-customer="handleCustomerSelected"
 						@create-customer="handleCreateCustomer"
+						@edit-customer="handleEditCustomer"
 						@proceed-to-payment="handleProceedToPayment"
 						@clear-cart="handleClearCart"
 						@save-draft="handleSaveDraft"
@@ -419,7 +420,9 @@
 			v-model="uiStore.showCreateCustomerDialog"
 			:pos-profile="shiftStore.profileName"
 			:initial-name="uiStore.initialCustomerName"
+			:edit-customer="customerToEdit"
 			@customer-created="handleCustomerCreated"
+			@customer-updated="handleCustomerUpdated"
 		/>
 
 		<!-- Promotion Management -->
@@ -767,6 +770,7 @@ const offersDialogRef = ref(null)
 const containerRef = ref(null)
 const dividerRef = ref(null)
 const pendingPaymentAfterCustomer = ref(false)
+const customerToEdit = ref(null)
 const logoutAfterClose = ref(false)
 const showClearCacheDialog = ref(false)
 const clearCacheOverlayRef = ref(null)
@@ -1430,8 +1434,8 @@ async function handleItemSelected(item, autoAdd = false) {
 		return
 	}
 
-	// Check for UOMs
-	if (item.item_uoms && item.item_uoms.length > 0) {
+	// Check for UOMs — only show selector if there are multiple UOMs to choose from
+	if (item.item_uoms && item.item_uoms.length > 1) {
 		cartStore.setPendingItem(item, 1, "uom")
 		uiStore.showItemSelectionDialog = true
 		return
@@ -1509,8 +1513,21 @@ function handleCustomerSelected(selectedCustomer) {
 }
 
 function handleCreateCustomer(searchValue) {
+	customerToEdit.value = null
 	uiStore.setInitialCustomerName(searchValue || "")
 	uiStore.showCreateCustomerDialog = true
+}
+
+function handleEditCustomer(customer) {
+	customerToEdit.value = customer
+	uiStore.showCreateCustomerDialog = true
+}
+
+function handleCustomerUpdated(updatedCustomer) {
+	cartStore.setCustomer(updatedCustomer)
+	customerToEdit.value = null
+	uiStore.showCreateCustomerDialog = false
+	showSuccess(__('{0} updated successfully', [updatedCustomer.customer_name]))
 }
 
 function handleProceedToPayment() {
@@ -1583,6 +1600,13 @@ async function handlePaymentCompleted(paymentData) {
 			cartStore.financeLenderPayments = paymentData.finance_lender_payments
 		} else {
 			cartStore.financeLenderPayments = []
+		}
+
+		// Store advances if provided
+		if (paymentData.advances && Array.isArray(paymentData.advances)) {
+			cartStore.invoiceAdvances = paymentData.advances.filter(adv => (adv.allocated_amount || 0) > 0)
+		} else {
+			cartStore.invoiceAdvances = []
 		}
 
 		// Store sales team data if provided
@@ -1921,6 +1945,7 @@ function handleCreateReturnFromHistory(invoice) {
 }
 
 function handleCustomerCreated(newCustomer) {
+	customerToEdit.value = null
 	cartStore.setCustomer(newCustomer)
 	uiStore.showCreateCustomerDialog = false
 	showSuccess(__('{0} created and selected', [newCustomer.customer_name]))

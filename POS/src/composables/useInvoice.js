@@ -232,6 +232,9 @@ export function useInvoice() {
 				custom_insurance_sr_no: item.custom_insurance_sr_no || null,
 				custom_item_category: item.custom_item_category || null,
 				requires_insurance_sr_no: item.requires_insurance_sr_no || false,
+				// Stable unique row identifier — used by updateItemDetails to find the exact
+				// cart row when the same item_code appears multiple times (e.g. insurance items).
+				_rowId: `${Date.now()}-${Math.random().toString(36).slice(2)}`,
 			}
 			invoiceItems.value.push(newItem)
 			// Recalculate the newly added item to apply taxes
@@ -817,6 +820,7 @@ export function useInvoice() {
 				invoiceData.advances = rawAdvances.map((adv) => ({
 					reference_type: adv.reference_type,
 					reference_name: adv.reference_name,
+					reference_row: adv.reference_row || null,
 					remarks: adv.remarks || '',
 					advance_amount: adv.advance_amount,
 					allocated_amount: adv.allocated_amount,
@@ -846,6 +850,19 @@ export function useInvoice() {
 			const submitData = {
 				change_amount:
 					remainingAmount.value < 0 ? Math.abs(remainingAmount.value) : 0,
+				advances: rawAdvances && rawAdvances.length > 0
+					? rawAdvances
+						.filter(adv => (adv.allocated_amount || 0) > 0)
+						.map(adv => ({
+							reference_type: adv.reference_type,
+							reference_name: adv.reference_name,
+							reference_row: adv.reference_row || null,
+							remarks: adv.remarks || '',
+							advance_amount: adv.advance_amount,
+							allocated_amount: adv.allocated_amount,
+							ref_exchange_rate: adv.ref_exchange_rate || 1,
+						}))
+					: [],
 			}
 
 			try {

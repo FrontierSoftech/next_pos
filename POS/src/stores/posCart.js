@@ -24,6 +24,7 @@ export const usePOSCartStore = defineStore("posCart", () => {
 		payments,
 		salesTeam,
 		financeLenderPayments,
+		invoiceAdvances,
 		additionalDiscount,
 		taxInclusive,
 		taxRules,
@@ -622,7 +623,12 @@ export const usePOSCartStore = defineStore("posCart", () => {
 
 	async function updateItemDetails(itemCode, updatedDetails) {
 		try {
-			const cartItem = invoiceItems.value.find((i) => i.item_code === itemCode)
+			// If the caller passes a _rowId (set at item-creation time), use it as the
+			// primary key so we find the exact row even when the same item_code appears
+			// multiple times (e.g. two insurance items with different serials).
+			const cartItem = updatedDetails._rowId
+				? invoiceItems.value.find((i) => i._rowId === updatedDetails._rowId)
+				: invoiceItems.value.find((i) => i.item_code === itemCode)
 			if (!cartItem) {
 				throw new Error("Item not found in cart")
 			}
@@ -798,6 +804,7 @@ export const usePOSCartStore = defineStore("posCart", () => {
 		suppressOfferReapply,
 		currentDraftId,
 		financeLenderPayments,
+		invoiceAdvances,
 		remarks, // Remarks/Narration for Sales Invoice
 		// Computed
 		itemCount,

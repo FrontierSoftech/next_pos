@@ -1,12 +1,13 @@
 <template>
-	<Dialog v-model="show" :options="{ title: __('New Customer'), size: 'lg' }">
+	<Dialog v-model="show" :options="{ title: isEditMode ? __('Edit Customer') : __('New Customer'), size: 'lg' }">
 		<template #body-content>
 			<div class="flex flex-col gap-4 max-h-[70vh] overflow-y-auto px-1">
 				<!-- Mode Toggle: Non-GST / GST -->
 				<div class="flex gap-2 p-1 bg-gray-100 rounded-lg">
 					<button
 						type="button"
-						@click="formMode = 'non-gst'"
+						@click="!isEditMode && (formMode = 'non-gst')"
+						:disabled="isEditMode"
 						:class="[
 							'flex-1 px-4 py-2 text-sm font-medium rounded-md transition-all',
 							formMode === 'non-gst'
@@ -18,7 +19,8 @@
 					</button>
 					<button
 						type="button"
-						@click="formMode = 'gst'"
+						@click="!isEditMode && (formMode = 'gst')"
+						:disabled="isEditMode"
 						:class="[
 							'flex-1 px-4 py-2 text-sm font-medium rounded-md transition-all',
 							formMode === 'gst'
@@ -470,7 +472,7 @@
 						:loading="creating"
 						:disabled="!canSubmit"
 					>
-						{{ __("Create Customer") }}
+						{{ isEditMode ? __("Update Customer") : __("Create Customer") }}
 					</Button>
 					<Button variant="subtle" @click="show = false">
 						{{ __("Cancel") }}
@@ -519,9 +521,10 @@ const props = defineProps({
 	modelValue: Boolean,
 	posProfile: String,
 	initialName: String,
+	editCustomer: { type: Object, default: null },
 })
 
-const emit = defineEmits(["update:modelValue", "customer-created"])
+const emit = defineEmits(["update:modelValue", "customer-created", "customer-updated"])
 
 // =============================================================================
 // State
@@ -618,6 +621,8 @@ const show = computed({
 	set: (val) => emit("update:modelValue", val),
 })
 
+const isEditMode = computed(() => !!props.editCustomer)
+
 const currentCountryCode = computed(() => {
 	const country = countriesStore.countries.find((c) => c.isd === selectedCountryCode.value)
 	return country?.code.toLowerCase() || "in"
@@ -651,6 +656,15 @@ const filteredAddressCountries = computed(() => {
 
 const canSubmit = computed(() => {
 	if (!hasPermission.value) return false
+
+	// In edit mode, just need minimal data
+	if (isEditMode.value) {
+		if (formMode.value === "non-gst") {
+			return /^\d{10}$/.test(nonGstData.value.phone_number)
+		} else {
+			return !!(gstData.value.party_name && gstData.value.gstin && gstData.value.gstin.length === 15)
+		}
+	}
 
 	if (formMode.value === "non-gst") {
 		// Non-GST validation: phone (10 digits), email, profession, address_line1
@@ -898,10 +912,187 @@ const loadProfessions = async () => {
 // =============================================================================
 
 const handleCreate = async () => {
-	if (formMode.value === "non-gst") {
+	if (isEditMode.value) {
+		await updateCustomer()
+	} else if (formMode.value === "non-gst") {
 		await createNonGstCustomer()
 	} else {
 		await createGstCustomer()
+	}
+}
+
+const prefillFromCustomer = async (customer) => {
+	if (!customer) return
+
+	// Determine mode: GST if customer has gstin, otherwise non-gst
+	if (customer.gstin) {
+		formMode.value = "gst"
+		Object.assign(gstData.value, {
+			gstin: customer.gstin || "",
+			party_name: customer.customer_name || "",
+			mobile_no: customer.mobile_no || "",
+			email_id: customer.email_id || "",
+			customer_type: customer.customer_type || "Individual",
+			gst_category: customer.gst_category || "Unregistered",
+			custom_profession: customer.custom_profession || "",
+			address_line1: "",
+			address_line2: "",
+			city: "",
+			state: "",
+			pincode: "",
+			country: "India",
+		})
+		// Parse mobile_no for country code and number
+		if (customer.mobile_no && customer.mobile_no.includes("-")) {
+			const parts = customer.mobile_no.split("-")
+			selectedCountryCode.value = parts[0] || "+91"
+			gstPhoneNumber.value = parts.slice(1).join("-")
+		} else {
+			gstPhoneNumber.value = customer.mobile_no || ""
+		}
+	} else {
+		formMode.value = "non-gst"
+		const phone = customer.mobile_no || ""
+		// Strip country code prefix like +91-
+		const phoneNumber = phone.includes("-") ? phone.split("-").slice(1).join("") : phone.replace(/^\+91/, "")
+		Object.assign(nonGstData.value, {
+			phone_number: phoneNumber,
+			customer_name: customer.custom_party_name_for_print || "",
+			email_id: customer.email_id || "",
+			custom_profession: customer.custom_profession || "",
+			address_line1: "",
+			address_line2: "",
+			city: "",
+			state: "",
+			pincode: "",
+			country: "India",
+		})
+	}
+
+	// Try to fetch existing address
+	try {
+		const addresses = await call("frappe.client.get_list", {
+			doctype: "Address",
+			filters: [["Dynamic Link", "link_doctype", "=", "Customer"], ["Dynamic Link", "link_name", "=", customer.name]],
+			fields: ["name", "address_line1", "address_line2", "city", "state", "pincode", "country"],
+			limit: 1,
+		})
+		if (addresses && addresses.length > 0) {
+			const addr = addresses[0]
+			if (formMode.value === "gst") {
+				Object.assign(gstData.value, {
+					address_line1: addr.address_line1 || "",
+					address_line2: addr.address_line2 || "",
+					city: addr.city || "",
+					state: addr.state || "",
+					pincode: addr.pincode || "",
+					country: addr.country || "India",
+				})
+				if (addr.state) gstStateSearchQuery.value = addr.state
+				if (addr.country) countryAddressSearchQuery.value = addr.country
+			} else {
+				Object.assign(nonGstData.value, {
+					address_line1: addr.address_line1 || "",
+					address_line2: addr.address_line2 || "",
+					city: addr.city || "",
+					state: addr.state || "",
+					pincode: addr.pincode || "",
+					country: addr.country || "India",
+				})
+			}
+		}
+	} catch (err) {
+		log.warn("Could not load customer address for edit", err)
+	}
+}
+
+const updateCustomer = async () => {
+	if (!props.editCustomer?.name) return
+
+	creating.value = true
+	try {
+		const customerName = props.editCustomer.name
+		let updates = {}
+		let addressData = null
+
+		if (formMode.value === "non-gst") {
+			if (!/^\d{10}$/.test(nonGstData.value.phone_number)) {
+				return showError(__("Customer Phone Number must be exactly 10 digits"))
+			}
+			updates = {
+				customer_name: nonGstData.value.phone_number,
+				mobile_no: `+91-${nonGstData.value.phone_number}`,
+				email_id: nonGstData.value.email_id || "",
+				custom_profession: nonGstData.value.custom_profession || "",
+				custom_party_name_for_print: nonGstData.value.customer_name || "",
+			}
+			addressData = {
+				address_line1: nonGstData.value.address_line1,
+				address_line2: nonGstData.value.address_line2 || "",
+				city: nonGstData.value.city || "",
+				state: nonGstData.value.state || "",
+				pincode: nonGstData.value.pincode || "",
+				country: nonGstData.value.country || "India",
+			}
+		} else {
+			if (!gstData.value.party_name) {
+				return showError(__("Party Name is required"))
+			}
+			updates = {
+				customer_name: gstData.value.party_name,
+				customer_type: gstData.value.customer_type || "Individual",
+				mobile_no: gstData.value.mobile_no || "",
+				email_id: gstData.value.email_id || "",
+				gstin: gstData.value.gstin || "",
+				gst_category: gstData.value.gst_category || "Unregistered",
+				custom_profession: gstData.value.custom_profession || "",
+			}
+			addressData = {
+				address_line1: gstData.value.address_line1,
+				address_line2: gstData.value.address_line2 || "",
+				city: gstData.value.city,
+				state: gstData.value.state,
+				pincode: gstData.value.pincode || "",
+				country: gstData.value.country || "India",
+			}
+		}
+
+		// Use backend API that handles email update via Contact
+		const updatedDoc = await call("pos_next.api.customers.update_customer", {
+			customer_name: customerName,
+			updates,
+		})
+
+		// Update address if address fields present
+		if (addressData?.address_line1) {
+			try {
+				const addresses = await call("frappe.client.get_list", {
+					doctype: "Address",
+					filters: [["Dynamic Link", "link_doctype", "=", "Customer"], ["Dynamic Link", "link_name", "=", customerName]],
+					fields: ["name"],
+					limit: 1,
+				})
+				if (addresses && addresses.length > 0) {
+					await call("frappe.client.set_value", {
+						doctype: "Address",
+						name: addresses[0].name,
+						fieldname: addressData,
+					})
+				}
+			} catch (addrError) {
+				log.warn("Could not update customer address", addrError)
+			}
+		}
+
+		// Emit the freshly fetched customer from backend
+		const mergedCustomer = updatedDoc || { ...props.editCustomer, ...updates, name: customerName }
+		emit("customer-updated", mergedCustomer)
+		show.value = false
+	} catch (error) {
+		log.error("Error updating customer", error)
+		showError(error.message || __("Failed to update customer"))
+	} finally {
+		creating.value = false
 	}
 }
 
@@ -1198,6 +1389,16 @@ const resetForm = () => {
 // =============================================================================
 
 watch(
+	() => props.editCustomer,
+	async (customer) => {
+		if (customer && props.modelValue) {
+			await prefillFromCustomer(customer)
+		}
+	},
+	{ immediate: true }
+)
+
+watch(
 	() => props.initialName,
 	(name) => {
 		if (name) {
@@ -1223,7 +1424,15 @@ watch(
 	() => props.modelValue,
 	async (isOpen) => {
 		show.value = isOpen
-		isOpen ? await loadDialogData() : resetForm()
+		if (isOpen) {
+			await loadDialogData()
+			// If editing, pre-fill form after base data is loaded
+			if (props.editCustomer) {
+				await prefillFromCustomer(props.editCustomer)
+			}
+		} else {
+			resetForm()
+		}
 	}
 )
 
