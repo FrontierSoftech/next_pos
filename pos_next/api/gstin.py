@@ -10,37 +10,53 @@ from frappe import _
 def get_gstin_info_for_pos(gstin):
 	"""
 	Fetch GSTIN information for POS customer creation.
-	This bypasses the desk access check in India Compliance since POS users
-	may not have desk access.
+	Calls India Compliance's internal _get_gstin_info (bypasses desk-access check
+	so POS users without desk access can still use the feature).
 
-	Args:
-		gstin (str): 15-character GSTIN to verify
+	Requires: GST Settings → Enable API → set API Secret from indiacompliance.app
 
-	Returns:
-		dict: GSTIN information including business name, category, status, addresses
+	Returns dict with keys:
+	  business_name, gst_category, status,
+	  permanent_address: { line1, line2, city, state, pincode, country }
 	"""
 	try:
-		# Import the internal function that doesn't check desk access
-		from india_compliance.gst_india.utils.gstin_info import _get_gstin_info
-
-		# Validate GSTIN format first
 		from india_compliance.gst_india.utils import validate_gstin
+		from india_compliance.gst_india.utils.gstin_info import _get_gstin_info
 
 		gstin = validate_gstin(gstin)
 
-		# Fetch GSTIN info (throw_error=False to return empty dict on failure)
-		gstin_info = _get_gstin_info(gstin, doc={"doctype": "Customer"}, throw_error=False)
+		# throw_error=False silently returns empty dict on any failure (e.g. API not configured).
+		gstin_info = _get_gstin_info(gstin, doc=frappe._dict({"doctype": "Customer"}), throw_error=False)
 
-		# Check if we got any data back
 		if not gstin_info or not gstin_info.get("business_name"):
-			# No data returned - likely API credentials not configured
+			# Distinguish between "API not set up" and "GSTIN not found" for a clear message.
+			from india_compliance.gst_india.utils import can_enable_api
+			settings = frappe.get_cached_doc("GST Settings")
+			if not settings.enable_api or not can_enable_api(settings):
+				return {
+					"error": True,
+					"message": _(
+						"India Compliance API is not configured. "
+						"Go to GST Settings → enable API → enter the API Secret "
+						"from your indiacompliance.app account to enable GSTIN autofill."
+					),
+				}
 			return {
 				"error": True,
-				"message": _(
-					"Unable to fetch GSTIN details. Please ensure India Compliance "
-					"API credentials are configured in GST Settings, or fill customer "
-					"details manually."
-				)
+				"message": _("No data found for this GSTIN. Please verify the number and try again."),
+			}
+
+		# India Compliance returns address fields as address_line1 / address_line2,
+		# but the POS dialog reads line1 / line2 — remap before returning.
+		if gstin_info.get("permanent_address"):
+			addr = gstin_info["permanent_address"]
+			gstin_info["permanent_address"] = {
+				"line1":    addr.get("address_line1", ""),
+				"line2":    addr.get("address_line2", ""),
+				"city":     addr.get("city", ""),
+				"state":    addr.get("state", ""),
+				"pincode":  addr.get("pincode", ""),
+				"country":  addr.get("country", "India"),
 			}
 
 		return gstin_info
@@ -49,16 +65,43 @@ def get_gstin_info_for_pos(gstin):
 		error_msg = str(e)
 		frappe.log_error(
 			title="POS GSTIN Verification Error",
-			message=f"Error verifying GSTIN {gstin}: {error_msg}"
+			message=f"GSTIN: {gstin}\n{error_msg}"
 		)
 
-		# Provide user-friendly error messages
 		if "check digit" in error_msg.lower():
-			error_msg = _("Invalid GSTIN format. Please verify the GSTIN number.")
-		elif "not allowed" in error_msg.lower():
+			error_msg = _("Invalid GSTIN. The check digit validation failed — please re-enter and try again.")
+		elif "not allowed" in error_msg.lower() or "permission" in error_msg.lower():
 			error_msg = _("Permission denied. Please contact your system administrator.")
 
+		return {"error": True, "message": error_msg}
+
+
+@frappe.whitelist()
+def check_duplicate_gstin_for_pos(gstin):
+	"""
+	Check if a GSTIN is already registered with an existing Customer.
+	POS-safe: no desk-access check, read-only DB query.
+
+	Returns dict:
+	  { exists: bool, customer: str|None, customer_name: str|None }
+	"""
+	if not gstin:
+		return {"exists": False}
+
+	gstin = gstin.upper().strip()
+
+	existing = frappe.db.get_value(
+		"Customer",
+		{"gstin": gstin, "disabled": 0},
+		["name", "customer_name"],
+		as_dict=True,
+	)
+
+	if existing:
 		return {
-			"error": True,
-			"message": error_msg
+			"exists": True,
+			"customer": existing.name,
+			"customer_name": existing.customer_name,
 		}
+
+	return {"exists": False}
