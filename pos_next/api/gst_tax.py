@@ -54,8 +54,9 @@ def get_place_of_supply(customer, company, shipping_address=None, branch=None):
 		if customer_gst_category == "Overseas":
 			return get_overseas_place_of_supply(shipping_address)
 		
-		# For non-GST (Unregistered) customers: Use branch's place_of_supply
-		if customer_gst_category == "Unregistered" and branch:
+		# For non-GST (Unregistered) customers WITHOUT GSTIN: Use branch's place_of_supply
+		# Guard: if customer has a GSTIN, always use the GSTIN state code (done below)
+		if customer_gst_category == "Unregistered" and not customer_gstin and branch:
 			try:
 				branch_pos = frappe.db.get_value(
 					"Branch",

@@ -602,7 +602,7 @@ const gstData = ref({
 	mobile_no: "",
 	email_id: "",
 	customer_type: "Individual",
-	gst_category: "Unregistered",
+	gst_category: "Registered Regular",
 	custom_profession: "",
 	address_line1: "",
 	address_line2: "",
@@ -871,6 +871,24 @@ const fetchGSTINInfo = async () => {
 
 			gstinStatus.value = gstinInfo.status ? `Status: ${gstinInfo.status}` : "Details fetched successfully"
 			showSuccess(__("GSTIN details fetched successfully"))
+
+			// Check if this GSTIN already belongs to another customer
+			try {
+				const dupResponse = await fetch("/api/method/pos_next.api.gstin.check_duplicate_gstin_for_pos", {
+					method: "POST",
+					headers: {
+						"Content-Type": "application/json",
+						"X-Frappe-CSRF-Token": csrfToken,
+					},
+					body: JSON.stringify({ gstin }),
+				})
+				const dupData = await dupResponse.json()
+				if (dupData.message?.exists) {
+					gstinStatus.value = __("Warning: GSTIN already registered with customer {0}", [dupData.message.customer_name || dupData.message.customer])
+				}
+			} catch (_e) {
+				// duplicate check is non-critical, ignore errors
+			}
 		} else {
 			gstinStatus.value = data.message?.message || "Invalid GSTIN or unable to fetch details"
 		}
@@ -1368,7 +1386,7 @@ const resetForm = () => {
 		mobile_no: "",
 		email_id: "",
 		customer_type: "Individual",
-		gst_category: "Unregistered",
+		gst_category: "Registered Regular",
 		custom_profession: "",
 		address_line1: "",
 		address_line2: "",

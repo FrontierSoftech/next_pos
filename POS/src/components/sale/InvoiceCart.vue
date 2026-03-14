@@ -137,6 +137,7 @@
 								:placeholder="__('Search or add customer...')"
 								class="w-full h-10 ps-9 pe-3 text-xs border border-gray-200 rounded-xl bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent shadow-sm transition-shadow"
 								:disabled="!customersLoaded"
+								@focus="refreshCustomers"
 								@keydown="handleKeydown"
 								:aria-label="__('Search customer in cart')"
 							/>
@@ -1131,6 +1132,12 @@ const totalQuantity = computed(() => {
  */
 function handleSearchInput(event) {
 	customerSearch.value = event.target.value
+}
+
+function refreshCustomers() {
+	if (!isOffline()) {
+		customersResource.reload()
+	}
 }
 
 /**

@@ -618,6 +618,22 @@ def update_invoice(data):
                     "reference_no": payment.get("reference_no", ""),
                 })
 
+        # Set place_of_supply BEFORE save so India Compliance's before_validate
+        # hook sees it already set and does not override it with the company state.
+        if invoice_doc.customer and invoice_doc.company:
+            try:
+                from pos_next.api.gst_tax import get_place_of_supply as _get_pos
+                _pos = _get_pos(
+                    invoice_doc.customer,
+                    invoice_doc.company,
+                    shipping_address=invoice_doc.get("shipping_address_name"),
+                    branch=invoice_doc.get("branch"),
+                )
+                if _pos:
+                    invoice_doc.place_of_supply = _pos
+            except Exception:
+                pass
+
         # Save as draft
         invoice_doc.flags.ignore_permissions = True
         frappe.flags.ignore_account_permission = True
@@ -727,23 +743,21 @@ def submit_invoice(invoice=None, data=None):
         # Handle place_of_supply based on customer type
         # For non-GST customers: Use branch's custom_place_of_supply
         # For GST customers: Use GST utilities to determine from GSTIN/address
-        if invoice_doc.customer:
+        if invoice_doc.customer and invoice_doc.company:
             try:
                 from pos_next.api.gst_tax import get_place_of_supply as get_pos_gst
-                
-                # Only set if not already set
-                if not invoice_doc.get("place_of_supply"):
-                    # Get place of supply using unified logic
-                    pos = get_pos_gst(
-                        invoice_doc.customer,
-                        invoice_doc.company,
-                        shipping_address=invoice_doc.get("shipping_address_name"),
-                        branch=invoice_doc.get("branch")
-                    )
-                    if pos:
-                        invoice_doc.place_of_supply = pos
+
+                # Always recalculate — draft may carry a stale value set by
+                # India Compliance's hook when customer_address wasn't yet on the doc.
+                pos = get_pos_gst(
+                    invoice_doc.customer,
+                    invoice_doc.company,
+                    shipping_address=invoice_doc.get("shipping_address_name"),
+                    branch=invoice_doc.get("branch"),
+                )
+                if pos:
+                    invoice_doc.place_of_supply = pos
             except Exception as e:
-                # Log error but don't fail the invoice submission
                 frappe.log_error(
                     f"Error setting place_of_supply: {str(e)}",
                     "Place of Supply Error"

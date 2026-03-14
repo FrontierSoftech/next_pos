@@ -405,6 +405,87 @@
             </div>
           </div>
 
+          <!-- Item Group Sales -->
+          <div v-if="shouldShowSummary && closingData.item_group_sales && closingData.item_group_sales.length > 0" class="bg-white border border-gray-200 rounded-lg overflow-hidden shadow-sm">
+            <button
+              @click="showItemGroupDetails = !showItemGroupDetails"
+              class="w-full px-3 py-3 md:px-6 md:py-4 flex items-center justify-between hover:bg-gray-50 transition-colors"
+            >
+              <div class="text-start">
+                <h3 class="text-sm md:text-lg font-medium text-gray-900">{{ __('Sales by Item Group') }}</h3>
+                <p class="text-xs md:text-sm text-gray-500">{{ __('{0} groups', [closingData.item_group_sales.length]) }}</p>
+              </div>
+              <svg :class="['h-4 w-4 md:h-5 md:w-5 text-gray-400 transition-transform', showItemGroupDetails ? 'transform rotate-180' : '']" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" />
+              </svg>
+            </button>
+            <div v-show="showItemGroupDetails" class="border-t border-gray-200 overflow-x-auto">
+              <table class="min-w-full divide-y divide-gray-200">
+                <thead class="bg-gray-50">
+                  <tr>
+                    <th class="px-4 py-3 text-start text-xs font-medium text-gray-500 uppercase">{{ __('Item Group') }}</th>
+                    <th class="px-4 py-3 text-end text-xs font-medium text-gray-500 uppercase">{{ __('Qty') }}</th>
+                    <th class="px-4 py-3 text-end text-xs font-medium text-gray-500 uppercase">{{ __('Amount') }}</th>
+                  </tr>
+                </thead>
+                <tbody class="bg-white divide-y divide-gray-200">
+                  <tr v-for="(row, idx) in closingData.item_group_sales" :key="idx" class="hover:bg-gray-50">
+                    <td class="px-4 py-3 text-start text-sm font-medium text-gray-900">{{ row.item_group }}</td>
+                    <td class="px-4 py-3 text-end text-sm text-gray-600">{{ formatQuantity(row.qty) }}</td>
+                    <td class="px-4 py-3 text-end text-sm font-semibold text-gray-900">{{ formatCurrency(row.amount) }}</td>
+                  </tr>
+                </tbody>
+                <tfoot class="bg-gray-50">
+                  <tr>
+                    <td class="px-4 py-3 text-start text-sm font-semibold text-gray-700">{{ __('Total') }}</td>
+                    <td class="px-4 py-3 text-end text-sm font-semibold text-gray-700">{{ formatQuantity(itemGroupTotalQty) }}</td>
+                    <td class="px-4 py-3 text-end text-sm font-bold text-gray-900">{{ formatCurrency(itemGroupTotalAmount) }}</td>
+                  </tr>
+                </tfoot>
+              </table>
+            </div>
+          </div>
+
+          <!-- Finance Lender Payments -->
+          <div v-if="shouldShowSummary && closingData.finance_lender_payments && closingData.finance_lender_payments.length > 0" class="bg-white border border-gray-200 rounded-lg overflow-hidden shadow-sm">
+            <button
+              @click="showFinanceLenderDetails = !showFinanceLenderDetails"
+              class="w-full px-3 py-3 md:px-6 md:py-4 flex items-center justify-between hover:bg-gray-50 transition-colors"
+            >
+              <div class="text-start">
+                <h3 class="text-sm md:text-lg font-medium text-gray-900">{{ __('Finance Lender Payments') }}</h3>
+                <p class="text-xs md:text-sm text-gray-500">{{ formatCurrency(financeLenderTotal) }} {{ __('collected') }}</p>
+              </div>
+              <svg :class="['h-4 w-4 md:h-5 md:w-5 text-gray-400 transition-transform', showFinanceLenderDetails ? 'transform rotate-180' : '']" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" />
+              </svg>
+            </button>
+            <div v-show="showFinanceLenderDetails" class="border-t border-gray-200 overflow-x-auto">
+              <table class="min-w-full divide-y divide-gray-200">
+                <thead class="bg-gray-50">
+                  <tr>
+                    <th class="px-4 py-3 text-start text-xs font-medium text-gray-500 uppercase">{{ __('Finance Lender') }}</th>
+                    <th class="px-4 py-3 text-start text-xs font-medium text-gray-500 uppercase">{{ __('Mode') }}</th>
+                    <th class="px-4 py-3 text-end text-xs font-medium text-gray-500 uppercase">{{ __('Amount') }}</th>
+                  </tr>
+                </thead>
+                <tbody class="bg-white divide-y divide-gray-200">
+                  <tr v-for="(row, idx) in closingData.finance_lender_payments" :key="idx" class="hover:bg-gray-50">
+                    <td class="px-4 py-3 text-start text-sm font-medium text-gray-900">{{ row.finance_lender }}</td>
+                    <td class="px-4 py-3 text-start text-sm text-gray-600">{{ row.mode || '—' }}</td>
+                    <td class="px-4 py-3 text-end text-sm font-semibold text-gray-900">{{ formatCurrency(row.amount) }}</td>
+                  </tr>
+                </tbody>
+                <tfoot class="bg-gray-50">
+                  <tr>
+                    <td colspan="2" class="px-4 py-3 text-start text-sm font-semibold text-gray-700">{{ __('Total') }}</td>
+                    <td class="px-4 py-3 text-end text-sm font-bold text-gray-900">{{ formatCurrency(financeLenderTotal) }}</td>
+                  </tr>
+                </tfoot>
+              </table>
+            </div>
+          </div>
+
           <!-- Error Display -->
           <div v-if="submitResource.error || (errorMessage && !closingDataResource.error)" class="rounded-lg bg-red-50 border border-red-200 p-3 md:p-4">
             <div class="flex gap-2 md:gap-3">
@@ -518,6 +599,8 @@ const closingData = ref(null)
 const closingDataResource = getClosingShiftData
 const submitResource = submitClosingShift
 const showInvoiceDetails = ref(false)
+const showItemGroupDetails = ref(true)
+const showFinanceLenderDetails = ref(true)
 const showSuccessReport = ref(false) // Track if shift is closed and showing report
 const errorMessage = ref('') // User-friendly error message
 
@@ -714,6 +797,21 @@ function getShiftDuration() {
 	}
 	return __('{0}m', [minutes])
 }
+
+const itemGroupTotalQty = computed(() => {
+	if (!closingData.value?.item_group_sales) return 0
+	return closingData.value.item_group_sales.reduce((s, r) => s + (r.qty || 0), 0)
+})
+
+const itemGroupTotalAmount = computed(() => {
+	if (!closingData.value?.item_group_sales) return 0
+	return closingData.value.item_group_sales.reduce((s, r) => s + (r.amount || 0), 0)
+})
+
+const financeLenderTotal = computed(() => {
+	if (!closingData.value?.finance_lender_payments) return 0
+	return closingData.value.finance_lender_payments.reduce((s, r) => s + (r.amount || 0), 0)
+})
 
 function getPaymentIcon(method) {
 	const methodLower = method.toLowerCase()

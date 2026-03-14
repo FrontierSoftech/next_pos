@@ -14,13 +14,29 @@ from frappe.utils import flt
 def validate(doc, method=None):
 	"""
 	Validate hook for Sales Invoice.
-	Apply tax inclusive settings based on POS Profile configuration.
-	Adjust paid_amount to include finance lender payments.
+	1. Always correct place_of_supply from billing_address_gstin (for ALL invoices).
+	   IC's validate_transaction only validates an existing POS but never recalculates it,
+	   so a stale client-sent value (e.g. company state instead of customer state) is
+	   saved as-is.  We fix this by recomputing before IC's validation runs.
+	2. Apply tax-inclusive settings (POS invoices only).
+	3. Adjust paid_amount for finance-lender payments (POS invoices only).
 
 	Args:
 		doc: Sales Invoice document
 		method: Hook method name (unused)
 	"""
+	# --- Fix place_of_supply for ALL Sales Invoices ---
+	# IC's _validate_links() already re-fetches billing_address_gstin from the address DB
+	# before validate runs, so doc.billing_address_gstin is always correct here.
+	# We compute the correct place_of_supply and set it if it differs.
+	try:
+		from india_compliance.gst_india.utils import get_place_of_supply as ic_get_pos
+		correct_pos = ic_get_pos(doc, doc.doctype)
+		if correct_pos and correct_pos != doc.place_of_supply:
+			doc.place_of_supply = correct_pos
+	except Exception:
+		pass
+
 	if not doc.pos_profile:
 		return
 

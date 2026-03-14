@@ -32,7 +32,11 @@
   "column_break_16",
   "taxes",
   "section_break_14",
-  "amended_from"
+  "amended_from",
+  "section_break_item_group_sales",
+  "item_group_sales",
+  "section_break_finance_lender",
+  "finance_lender_payments"
  ],
  "fields": [
   {
@@ -196,6 +200,30 @@
   {
    "fieldname": "section_break_if3m1",
    "fieldtype": "Section Break"
+  },
+  {
+   "fieldname": "section_break_item_group_sales",
+   "fieldtype": "Section Break",
+   "label": "Sales by Item Group"
+  },
+  {
+   "fieldname": "item_group_sales",
+   "fieldtype": "Table",
+   "label": "Item Group Sales",
+   "options": "POS Closing Shift Item Group",
+   "read_only": 1
+  },
+  {
+   "fieldname": "section_break_finance_lender",
+   "fieldtype": "Section Break",
+   "label": "Finance Lender Payments"
+  },
+  {
+   "fieldname": "finance_lender_payments",
+   "fieldtype": "Table",
+   "label": "Finance Lender Payments",
+   "options": "POS Closing Shift Finance Lender",
+   "read_only": 1
   }
  ],
  "is_submittable": 1,

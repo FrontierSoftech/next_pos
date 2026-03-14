@@ -151,9 +151,14 @@ def get_closing_shift_data(opening_shift):
 		# Convert the result to a serializable dict using frappe's as_dict which handles datetime
 		if hasattr(closing_data, 'as_dict'):
 			result = closing_data.as_dict()
-			# Ensure all values are JSON serializable by converting to JSON and back
-			return json.loads(json.dumps(result, default=str))
-		return closing_data
+		else:
+			result = closing_data
+
+		# Augment with item-group breakdown and finance lender payments
+		result["item_group_sales"] = _get_item_group_sales(opening_shift)
+		result["finance_lender_payments"] = _get_finance_lender_payments(opening_shift)
+
+		return json.loads(json.dumps(result, default=str))
 	except Exception as e:
 		frappe.log_error(frappe.get_traceback(), "Get Closing Shift Data Error")
 		frappe.throw(_("Error getting closing shift data: {0}").format(str(e)))
@@ -175,3 +180,61 @@ def submit_closing_shift(closing_shift):
 	except Exception as e:
 		frappe.log_error(frappe.get_traceback(), "Submit Closing Shift Error")
 		frappe.throw(_("Error submitting closing shift: {0}").format(str(e)))
+
+
+def _get_item_group_sales(opening_shift):
+	"""Return item-group-wise qty and amount for all submitted invoices in the shift."""
+	rows = frappe.db.sql(
+		"""
+		SELECT
+			sii.item_group,
+			SUM(sii.qty) AS qty,
+			SUM(sii.amount) AS amount
+		FROM `tabSales Invoice Item` sii
+		INNER JOIN `tabSales Invoice` si ON si.name = sii.parent
+		WHERE
+			si.docstatus = 1
+			AND si.posa_pos_opening_shift = %(shift)s
+		GROUP BY sii.item_group
+		ORDER BY amount DESC
+		""",
+		{"shift": opening_shift},
+		as_dict=True,
+	)
+	return [
+		{
+			"item_group": r.item_group or "Uncategorised",
+			"qty": float(r.qty or 0),
+			"amount": float(r.amount or 0),
+		}
+		for r in rows
+	]
+
+
+def _get_finance_lender_payments(opening_shift):
+	"""Return finance-lender-wise totals collected during the shift."""
+	rows = frappe.db.sql(
+		"""
+		SELECT
+			flp.finance_lender,
+			flp.mode,
+			SUM(flp.amount) AS amount
+		FROM `tabFinance Lender Options` flp
+		INNER JOIN `tabSales Invoice` si ON si.name = flp.parent
+		WHERE
+			si.docstatus = 1
+			AND si.posa_pos_opening_shift = %(shift)s
+		GROUP BY flp.finance_lender, flp.mode
+		ORDER BY amount DESC
+		""",
+		{"shift": opening_shift},
+		as_dict=True,
+	)
+	return [
+		{
+			"finance_lender": r.finance_lender or "Unknown",
+			"mode": r.mode or "",
+			"amount": float(r.amount or 0),
+		}
+		for r in rows
+	]
