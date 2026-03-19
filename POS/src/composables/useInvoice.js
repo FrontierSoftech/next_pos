@@ -20,6 +20,7 @@ export function useInvoice() {
 	const taxRules = ref([]) // Tax rules from POS Profile
 	const taxInclusive = ref(false) // Tax inclusive setting from POS Settings
 	const remarks = ref(null) // Remarks/Narration for Sales Invoice
+	const pendingDraftName = ref(null) // ERPNext draft name saved after update_invoice() succeeds, used to avoid orphaned drafts on retry
 
 	// Performance: Incrementally maintained aggregates (updated on add/remove/change)
 	// This avoids O(n) array reductions on every reactive change
@@ -734,6 +735,7 @@ export function useInvoice() {
 
 			const invoiceData = {
 				doctype: "Sales Invoice",
+				...(pendingDraftName.value ? { name: pendingDraftName.value } : {}),
 				pos_profile: posProfile.value,
 				posa_pos_opening_shift: posOpeningShift.value,
 				customer: customer.value?.name || customer.value,
@@ -846,6 +848,9 @@ export function useInvoice() {
 					"Failed to create draft invoice - no invoice name returned",
 				)
 			}
+
+			// Store draft name so a retry can update this draft instead of creating a new one
+			pendingDraftName.value = invoiceDoc.name
 
 			const submitData = {
 				change_amount:
@@ -980,6 +985,7 @@ export function useInvoice() {
 		additionalDiscount.value = 0
 		couponCode.value = null
 		remarks.value = null
+		pendingDraftName.value = null
 
 		// Reset incremental cache
 		_cachedSubtotal.value = 0
