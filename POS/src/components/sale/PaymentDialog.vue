@@ -568,7 +568,9 @@
 									? __('Sales Persons')
 									: __('Sales Person')
 								}}
+								<span class="text-red-500 ms-0.5">*</span>
 							</span>
+							<span v-if="selectedSalesPersons.length === 0" class="text-xs font-medium text-red-600 bg-red-50 px-2 py-0.5 rounded border border-red-200">{{ __('Required') }}</span>
 							<span v-if="selectedSalesPersons.length > 0" class="text-xs font-bold text-purple-600 bg-purple-100 px-2 py-0.5 rounded">
 								{{ settingsStore.isSingleSalesPerson
 									? __('1 selected')
@@ -1282,6 +1284,11 @@ const canComplete = computed(() => {
 
 	// Disallow completing payment when entered amount exceeds the bill total
 	if (changeAmount.value > 0) {
+		return false
+	}
+
+	// Sales person is mandatory when the feature is enabled
+	if (settingsStore.enableSalesPersons && selectedSalesPersons.value.length === 0) {
 		return false
 	}
 
