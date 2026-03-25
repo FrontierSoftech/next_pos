@@ -361,6 +361,7 @@
 											class="w-full px-2 py-2 text-xs border border-gray-200 rounded focus:outline-none focus:ring-1 focus:ring-purple-500 focus:border-transparent bg-white disabled:bg-gray-100 disabled:cursor-not-allowed"
 											@focus="showLenderDropdown(index)"
 											@input="searchFinanceLender(index)"
+											@keydown="handleLenderKeydown(index, $event)"
 										/>
 										<div v-if="row.finance_lender && !row.showDropdown" class="absolute inset-0 flex items-center">
 											<div class="flex items-center gap-1 mx-1 px-2 py-0.5 bg-purple-100 text-purple-700 rounded text-xs flex-1 min-w-0">
@@ -377,13 +378,15 @@
 										</div>
 										<div
 											v-if="row.showDropdown && row.lenderOptions.length > 0"
+											:data-lender-dropdown="index"
 											class="absolute left-0 right-0 top-full mt-1 z-[9999] bg-white border border-gray-200 rounded-lg shadow-xl max-h-40 overflow-y-auto"
 										>
 											<div
-												v-for="option in row.lenderOptions"
+												v-for="(option, optIndex) in row.lenderOptions"
 												:key="option.name"
+												data-lender-item
 												@click="selectFinanceLender(index, option)"
-												class="px-3 py-2 hover:bg-purple-50 cursor-pointer border-b border-gray-100 last:border-b-0 transition-colors"
+												:class="['px-3 py-2 cursor-pointer border-b border-gray-100 last:border-b-0 transition-colors', optIndex === row.highlightedIndex ? 'bg-purple-100' : 'hover:bg-purple-50']"
 											>
 												<div class="font-medium text-xs text-gray-900">{{ option.name }}</div>
 												<div v-if="option.label" class="text-[10px] text-gray-500">{{ option.label }}</div>
@@ -458,6 +461,7 @@
 										class="w-full px-2 py-1.5 text-xs border border-gray-200 rounded focus:outline-none focus:ring-1 focus:ring-purple-500 focus:border-transparent bg-white disabled:bg-gray-100 disabled:cursor-not-allowed"
 										@focus="showLenderDropdown(index)"
 										@input="searchFinanceLender(index)"
+										@keydown="handleLenderKeydown(index, $event)"
 									/>
 									<!-- Selected Lender Display Chip -->
 									<div v-if="row.finance_lender && !row.showDropdown" class="absolute inset-0 flex items-center">
@@ -476,13 +480,15 @@
 									<!-- Dropdown Results -->
 									<div
 										v-if="row.showDropdown && row.lenderOptions.length > 0"
+										:data-lender-dropdown="index"
 										class="absolute left-0 right-0 top-full mt-1 z-[9999] bg-white border border-gray-200 rounded-lg shadow-xl max-h-40 overflow-y-auto"
 									>
 										<div
-											v-for="option in row.lenderOptions"
+											v-for="(option, optIndex) in row.lenderOptions"
 											:key="option.name"
+											data-lender-item
 											@click="selectFinanceLender(index, option)"
-											class="px-3 py-2 hover:bg-purple-50 cursor-pointer border-b border-gray-100 last:border-b-0 transition-colors"
+											:class="['px-3 py-2 cursor-pointer border-b border-gray-100 last:border-b-0 transition-colors', optIndex === row.highlightedIndex ? 'bg-purple-100' : 'hover:bg-purple-50']"
 										>
 											<div class="font-medium text-xs text-gray-900">{{ option.name }}</div>
 											<div v-if="option.label" class="text-[10px] text-gray-500">{{ option.label }}</div>
@@ -884,7 +890,7 @@ import { formatCurrency as formatCurrencyUtil, getCurrencySymbol } from "@/utils
 import { getPaymentIcon } from "@/utils/payment"
 import { offlineWorker } from "@/utils/offline/workerClient"
 import { Dialog, createResource } from "frappe-ui"
-import { computed, ref, watch } from "vue"
+import { computed, nextTick, ref, watch } from "vue"
 import { useToast } from "@/composables/useToast"
 
 const settingsStore = usePOSSettingsStore()
@@ -1592,7 +1598,8 @@ function addFinanceLenderRow() {
 		amount: 0,
 		reference_no: '',
 		showDropdown: true,  // Show dropdown immediately
-		lenderOptions: []
+		lenderOptions: [],
+		highlightedIndex: -1
 	})
 	// Auto-search to populate dropdown with Finance Lender customers
 	searchFinanceLender(newIndex)
@@ -1609,6 +1616,7 @@ function handleModeChange(index) {
 	row.finance_lender_search = ''
 	row.lenderOptions = []
 	row.showDropdown = false
+	row.highlightedIndex = -1
 }
 
 function showLenderDropdown(index) {
@@ -1646,6 +1654,7 @@ async function searchFinanceLender(index) {
 				name: acc.name,
 				label: acc.account_type || ''
 			}))
+			row.highlightedIndex = -1
 		} else if (row.mode === 'Customer') {
 			// Check if we have cached finance lender options from cartStore
 			const cachedOptions = cartStore.financeLenderOptions
@@ -1679,10 +1688,12 @@ async function searchFinanceLender(index) {
 					label: cust.customer_name || ''
 				}))
 			}
+			row.highlightedIndex = -1
 		}
 	} catch (error) {
 		console.error('Error searching finance lenders:', error)
 		row.lenderOptions = []
+		row.highlightedIndex = -1
 	}
 }
 
@@ -1699,6 +1710,47 @@ function clearFinanceLender(index) {
 	row.finance_lender = ''
 	row.finance_lender_search = ''
 	row.showDropdown = false
+	row.highlightedIndex = -1
+}
+
+function handleLenderKeydown(index, event) {
+	const row = financeLenderPayments.value[index]
+	if (!row.showDropdown || row.lenderOptions.length === 0) return
+	if (event.key === 'ArrowDown') {
+		event.preventDefault()
+		row.highlightedIndex = Math.min(row.highlightedIndex + 1, row.lenderOptions.length - 1)
+		scrollLenderItemIntoView(index)
+	} else if (event.key === 'ArrowUp') {
+		event.preventDefault()
+		row.highlightedIndex = Math.max(row.highlightedIndex - 1, 0)
+		scrollLenderItemIntoView(index)
+	} else if (event.key === 'Enter' && row.highlightedIndex >= 0) {
+		event.preventDefault()
+		selectFinanceLender(index, row.lenderOptions[row.highlightedIndex])
+	} else if (event.key === 'Escape') {
+		row.showDropdown = false
+		row.highlightedIndex = -1
+	}
+}
+
+function scrollLenderItemIntoView(index) {
+	nextTick(() => {
+		// Two dropdowns exist in DOM (mobile + desktop) — pick the visible one
+		const allDropdowns = document.querySelectorAll(`[data-lender-dropdown="${index}"]`)
+		const dropdown = Array.from(allDropdowns).find(el => el.offsetParent !== null)
+		if (!dropdown) return
+		const items = dropdown.querySelectorAll('[data-lender-item]')
+		const row = financeLenderPayments.value[index]
+		const item = items[row.highlightedIndex]
+		if (!item) return
+		const elHeight = item.offsetHeight
+		const scrollTop = dropdown.scrollTop
+		const viewport = scrollTop + dropdown.clientHeight
+		const elOffset = elHeight * row.highlightedIndex
+		if (elOffset < scrollTop || (elOffset + elHeight) > viewport) {
+			dropdown.scrollTop = elOffset
+		}
+	})
 }
 
 function recalculateFinanceLenderTotals() {
