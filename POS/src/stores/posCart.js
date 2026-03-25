@@ -580,13 +580,15 @@ export const usePOSCartStore = defineStore("posCart", () => {
 		const itemCodes = items.map(item => item.item_code)
 		const itemGroups = items.map(item => item.item_group).filter(Boolean)
 		const brands = items.map(item => item.brand).filter(Boolean)
+		const itemCategories = items.map(item => item.custom_item_category).filter(Boolean)
 
 		return {
 			subtotal: subtotal.value,
 			itemCount: totalQty,
 			itemCodes: [...new Set(itemCodes)],
 			itemGroups: [...new Set(itemGroups)],
-			brands: [...new Set(brands)]
+			brands: [...new Set(brands)],
+			itemCategories: [...new Set(itemCategories)],
 		}
 	}
 
@@ -713,6 +715,7 @@ export const usePOSCartStore = defineStore("posCart", () => {
 	let cachedItemCodes = []
 	let cachedItemGroups = []
 	let cachedBrands = []
+	let cachedItemCategories = []
 
 	function syncOfferSnapshot() {
 		// Only sync if values are initialized
@@ -735,6 +738,11 @@ export const usePOSCartStore = defineStore("posCart", () => {
 						invoiceItems.value.map((item) => item.brand).filter(Boolean),
 					),
 				]
+				cachedItemCategories = [
+					...new Set(
+						invoiceItems.value.map((item) => item.custom_item_category).filter(Boolean),
+					),
+				]
 				previousItemCodesHash = currentHash
 			}
 
@@ -749,6 +757,7 @@ export const usePOSCartStore = defineStore("posCart", () => {
 				itemCodes: cachedItemCodes,
 				itemGroups: cachedItemGroups,
 				brands: cachedBrands,
+				itemCategories: cachedItemCategories,
 			})
 		}
 	}

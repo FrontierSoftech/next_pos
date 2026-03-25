@@ -31,6 +31,7 @@ class ApplyOn:
 	ITEM_CODE = "Item Code"
 	ITEM_GROUP = "Item Group"
 	BRAND = "Brand"
+	ITEM_CATEGORY = "Item Category"
 	TRANSACTION = "Transaction"
 
 
@@ -50,6 +51,7 @@ class OfferEligibility:
 	items: List[str]
 	item_groups: List[str]
 	brands: List[str]
+	item_categories: List[str]
 
 
 @dataclass
@@ -78,6 +80,7 @@ class Offer:
 	eligible_items: List[str]
 	eligible_item_groups: List[str]
 	eligible_brands: List[str]
+	eligible_item_categories: List[str]
 
 	def to_dict(self) -> Dict:
 		"""Convert to dictionary for API response"""
@@ -115,7 +118,8 @@ class EligibilityFetcher:
 			eligibility[parent] = OfferEligibility(
 				items=items_map.get(parent, []),
 				item_groups=item_groups_map.get(parent, []),
-				brands=brands_map.get(parent, [])
+				brands=brands_map.get(parent, []),
+				item_categories=[]
 			)
 
 		return eligibility
@@ -239,6 +243,7 @@ class OfferBuilder:
 		eligible_items = []
 		eligible_item_groups = []
 		eligible_brands = []
+		eligible_item_categories = []
 
 		if rule["apply_on"] == ApplyOn.ITEM_CODE:
 			eligible_items = eligibility.items
@@ -273,7 +278,8 @@ class OfferBuilder:
 			promotional_scheme_id=rule.get("promotional_scheme_id"),
 			eligible_items=eligible_items,
 			eligible_item_groups=eligible_item_groups,
-			eligible_brands=eligible_brands
+			eligible_brands=eligible_brands,
+			eligible_item_categories=eligible_item_categories
 		)
 
 	@staticmethod
@@ -290,6 +296,7 @@ class OfferBuilder:
 		eligible_items = []
 		eligible_item_groups = []
 		eligible_brands = []
+		eligible_item_categories = []
 
 		if rule["apply_on"] == ApplyOn.ITEM_CODE:
 			eligible_items = eligibility.items
@@ -321,7 +328,8 @@ class OfferBuilder:
 			promotional_scheme_id=None,
 			eligible_items=eligible_items,
 			eligible_item_groups=eligible_item_groups,
-			eligible_brands=eligible_brands
+			eligible_brands=eligible_brands,
+			eligible_item_categories=eligible_item_categories
 		)
 
 
@@ -370,7 +378,7 @@ def _get_pos_offer_records(company: str, pos_profile: str, date: str) -> List[Of
 	rows = frappe.db.sql("""
 		SELECT
 			name, title, description, disable, apply_on, offer,
-			company, pos_profile, item, item_group, brand,
+			company, pos_profile, item, item_group, brand, item_category,
 			valid_from, valid_upto, coupon_based, auto,
 			min_qty, max_qty, min_amt, max_amt,
 			discount_type, rate, discount_amount, discount_percentage
@@ -391,6 +399,7 @@ def _get_pos_offer_records(company: str, pos_profile: str, date: str) -> List[Of
 		eligible_items = [row["item"]] if apply_on == ApplyOn.ITEM_CODE and row.get("item") else []
 		eligible_item_groups = [row["item_group"]] if apply_on == ApplyOn.ITEM_GROUP and row.get("item_group") else []
 		eligible_brands = [row["brand"]] if apply_on == ApplyOn.BRAND and row.get("brand") else []
+		eligible_item_categories = [row["item_category"]] if apply_on == ApplyOn.ITEM_CATEGORY and row.get("item_category") else []
 
 		# Map discount_type field to rate_or_discount style for frontend
 		discount_type = row.get("discount_type") or "Discount Percentage"
@@ -419,6 +428,7 @@ def _get_pos_offer_records(company: str, pos_profile: str, date: str) -> List[Of
 			eligible_items=eligible_items,
 			eligible_item_groups=eligible_item_groups,
 			eligible_brands=eligible_brands,
+			eligible_item_categories=eligible_item_categories,
 		)
 		offers.append(offer)
 
