@@ -879,6 +879,7 @@
 
 <script setup>
 import { usePOSSettingsStore } from "@/stores/posSettings"
+import { usePOSCartStore } from "@/stores/posCart"
 import { formatCurrency as formatCurrencyUtil, getCurrencySymbol } from "@/utils/currency"
 import { getPaymentIcon } from "@/utils/payment"
 import { offlineWorker } from "@/utils/offline/workerClient"
@@ -887,6 +888,7 @@ import { computed, ref, watch } from "vue"
 import { useToast } from "@/composables/useToast"
 
 const settingsStore = usePOSSettingsStore()
+const cartStore = usePOSCartStore()
 const { showWarning } = useToast()
 
 const props = defineProps({
@@ -1645,16 +1647,38 @@ async function searchFinanceLender(index) {
 				label: acc.account_type || ''
 			}))
 		} else if (row.mode === 'Customer') {
-			// Search for customers in Finance Lender group
-			const result = await searchFinanceLendersResource.submit({
-				search_term: searchTerm,
-				pos_profile: props.posProfile,
-			})
-			console.log('[PaymentDialog] Customer search result:', result)
-			row.lenderOptions = (result || []).map(cust => ({
-				name: cust.name,
-				label: cust.customer_name || ''
-			}))
+			// Check if we have cached finance lender options from cartStore
+			const cachedOptions = cartStore.financeLenderOptions
+			if (cachedOptions && cachedOptions.length > 0 && !searchTerm) {
+				// Use cached options when no search term
+				row.lenderOptions = cachedOptions.map(cust => ({
+					name: cust.name,
+					label: cust.customer_name || ''
+				}))
+			} else if (cachedOptions && cachedOptions.length > 0 && searchTerm) {
+				// Filter from cache when there's a search term
+				const searchLower = searchTerm.toLowerCase()
+				row.lenderOptions = cachedOptions
+					.filter(cust => 
+						(cust.name && cust.name.toLowerCase().includes(searchLower)) ||
+						(cust.customer_name && cust.customer_name.toLowerCase().includes(searchLower))
+					)
+					.map(cust => ({
+						name: cust.name,
+						label: cust.customer_name || ''
+					}))
+			} else {
+				// Fallback to API if no cache available
+				const result = await searchFinanceLendersResource.submit({
+					search_term: searchTerm,
+					pos_profile: props.posProfile,
+				})
+				console.log('[PaymentDialog] Customer search result:', result)
+				row.lenderOptions = (result || []).map(cust => ({
+					name: cust.name,
+					label: cust.customer_name || ''
+				}))
+			}
 		}
 	} catch (error) {
 		console.error('Error searching finance lenders:', error)

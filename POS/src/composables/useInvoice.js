@@ -12,6 +12,7 @@ export function useInvoice() {
 	const payments = ref([])
 	const salesTeam = ref([]) // Sales team for Sales Invoice
 	const financeLenderPayments = ref([]) // Finance Lender Payments for custom_finance_lender_payments
+	const financeLenderOptions = ref([]) // Cached finance lender options for dropdown
 	const invoiceAdvances = ref([]) // Advances for Sales Invoice advances child table
 	const posProfile = ref(null)
 	const posOpeningShift = ref(null) // POS Opening Shift name
@@ -109,6 +110,22 @@ export function useInvoice() {
 	const cleanupDraftsResource = createResource({
 		url: "pos_next.api.invoices.cleanup_old_drafts",
 		auto: false,
+	})
+
+	const getFinanceLendersResource = createResource({
+		url: "pos_next.api.finance_lender.search_finance_lenders",
+		makeParams({ pos_profile }) {
+			return {
+				search_term: "",
+				pos_profile: pos_profile || "",
+				limit: 500,
+			}
+		},
+		auto: false,
+		cache: "financeLenderOptions",
+		onSuccess(data) {
+			financeLenderOptions.value = data || []
+		},
 	})
 
 	// ========================================================================
@@ -1124,6 +1141,23 @@ export function useInvoice() {
 		rebuildIncrementalCache()
 	}
 
+	async function preloadFinanceLenders() {
+		/**
+		 * Preload finance lender options for the current POS Profile.
+		 * Called when POS profile is selected to avoid latency when
+		 * opening the payment dialog's finance lender dropdown.
+		 */
+		if (!posProfile.value) return
+
+		try {
+			await getFinanceLendersResource.submit({
+				pos_profile: posProfile.value,
+			})
+		} catch (error) {
+			console.error("Error preloading finance lenders:", error)
+		}
+	}
+
 	return {
 		// State
 		invoiceItems,
@@ -1131,6 +1165,7 @@ export function useInvoice() {
 		payments,
 		salesTeam,
 		financeLenderPayments,
+		financeLenderOptions,
 		invoiceAdvances,
 		posProfile,
 		posOpeningShift,
@@ -1172,6 +1207,7 @@ export function useInvoice() {
 		loadTaxRules,
 		updateTaxesForCustomer,
 		setTaxInclusive,
+		preloadFinanceLenders,
 		recalculateItem,
 		rebuildIncrementalCache,
 
@@ -1182,5 +1218,6 @@ export function useInvoice() {
 		applyOffersResource,
 		getItemDetailsResource,
 		getTaxesResource,
+		getFinanceLendersResource,
 	}
 }

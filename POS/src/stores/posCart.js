@@ -24,6 +24,7 @@ export const usePOSCartStore = defineStore("posCart", () => {
 		payments,
 		salesTeam,
 		financeLenderPayments,
+		financeLenderOptions,
 		invoiceAdvances,
 		additionalDiscount,
 		taxInclusive,
@@ -46,6 +47,7 @@ export const usePOSCartStore = defineStore("posCart", () => {
 		rebuildIncrementalCache,
 		currentTaxTemplate,
 		isInterState,
+		preloadFinanceLenders,
 	} = useInvoice()
 
 	const offersStore = usePOSOffersStore()
@@ -804,6 +806,7 @@ export const usePOSCartStore = defineStore("posCart", () => {
 		suppressOfferReapply,
 		currentDraftId,
 		financeLenderPayments,
+		financeLenderOptions,
 		invoiceAdvances,
 		remarks, // Remarks/Narration for Sales Invoice
 		// Computed
@@ -836,6 +839,7 @@ export const usePOSCartStore = defineStore("posCart", () => {
 		rebuildIncrementalCache,
 		applyOffersResource,
 		buildInvoiceDataForOffers,
+		preloadFinanceLenders,
 
 		// Tax template info
 		currentTaxTemplate,

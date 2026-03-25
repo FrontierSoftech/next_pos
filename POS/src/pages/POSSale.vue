@@ -1015,6 +1015,9 @@ onMounted(async () => {
 				// Load tax rules with tax_inclusive setting from POS Settings
 				await cartStore.loadTaxRules(shiftStore.profileName, posSettingsStore.settings)
 
+				// Preload finance lender options for faster dropdown loading
+				await cartStore.preloadFinanceLenders()
+
 				// Set default customer from POS Profile if configured
 				await cartStore.setDefaultCustomer()
 
