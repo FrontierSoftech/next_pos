@@ -500,6 +500,7 @@ def update_invoice(data):
         discount_amount = flt(data.get("discount_amount") or 0)
         if discount_amount:
             invoice_doc.discount_amount = discount_amount
+            invoice_doc.apply_discount_on = "Net Total"
         
         # Use utility functions for tax handling
         from pos_next.api.tax_utils import (
@@ -840,7 +841,26 @@ def submit_invoice(invoice=None, data=None):
         # Auto-set batch numbers for returns
         _auto_set_return_batches(invoice_doc)
 
-
+        # Ensure discount fields are applied before save (they may have been loaded from draft,
+        # but explicit setting ensures India Compliance hooks don't reset them)
+        discount_amount_submit = flt(invoice.get("discount_amount") or 0)
+        if discount_amount_submit:
+            invoice_doc.discount_amount = discount_amount_submit
+            invoice_doc.apply_discount_on = "Net Total"
+            # Handle custom_discount_ledger child table
+            custom_discount_ledger = invoice.get("custom_discount_ledger")
+            if custom_discount_ledger and isinstance(custom_discount_ledger, list):
+                invoice_doc.set("custom_discount_ledger", [])
+                for row in custom_discount_ledger:
+                    invoice_doc.append("custom_discount_ledger", {
+                        "discount_ledger": row.get("discount_ledger"),
+                        "actual_discount": flt(row.get("actual_discount", 0)),
+                        "discount": flt(row.get("discount", 0)),
+                    })
+            try:
+                invoice_doc.run_method("calculate_taxes_and_totals")
+            except Exception:
+                pass
 
         # Set remarks before save and submit
         # add_remarks() in ERPNext's before_submit only sets "No Remarks" if `not self.remarks`

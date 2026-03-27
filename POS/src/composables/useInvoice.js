@@ -727,6 +727,7 @@ export function useInvoice() {
 				type: p.type,
 			})),
 			discount_amount: additionalDiscount.value || 0,
+			apply_discount_on: 'Net Total',
 			coupon_code: couponCode.value,
 			is_pos: 1,
 			update_stock: 1,
@@ -789,13 +790,13 @@ export function useInvoice() {
 					amount: p.amount,
 					type: p.type,
 				})),
-				discount_amount: additionalDiscount.value || 0,
+				discount_amount: parseFloat(
+					toRaw(discountLedger.value).reduce((sum, row) => sum + (row.discount || 0), 0).toFixed(2)
+				),
 				apply_discount_on: 'Net Total',
-				is_cash_or_non_trade_discount: 1,
-				additional_discount_account: 'Special Discount - IC',
 				custom_discount_ledger: toRaw(discountLedger.value).map(row => ({
 					discount_ledger: row.discount_ledger,
-					disc_: row.disc_ || 0,
+					actual_discount: row.actual_discount || 0,
 					discount: row.discount || 0,
 				})),
 				coupon_code: couponCode.value,

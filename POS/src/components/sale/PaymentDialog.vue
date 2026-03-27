@@ -167,7 +167,7 @@
 						<div
 							v-for="(row, index) in discountLedgerRows"
 							:key="index"
-							class="bg-white border border-orange-200 rounded p-1.5 grid grid-cols-[1fr_70px_85px_24px] gap-1.5 items-center"
+							class="bg-white border border-orange-200 rounded p-1.5 grid grid-cols-[1fr_90px_80px_24px] gap-1.5 items-center"
 						>
 							<!-- Account Search -->
 							<div class="relative">
@@ -210,31 +210,28 @@
 									<div class="text-[11px] text-gray-500 text-center">{{ __('No results') }}</div>
 								</div>
 							</div>
-							<!-- Disc % -->
-							<div class="relative">
-								<input
-									v-model.number="row.disc_"
-									type="number"
-									min="0"
-									max="100"
-									step="0.01"
-									placeholder="0"
-									class="w-full px-1.5 py-1.5 text-[11px] pe-5 border border-orange-200 rounded focus:outline-none focus:ring-1 focus:ring-orange-400 bg-white"
-									@input="handleDiscPercChange(index)"
-								/>
-								<span class="absolute end-1.5 top-1/2 -translate-y-1/2 text-gray-400 text-[10px]">%</span>
-							</div>
-							<!-- Amount -->
+							<!-- Actual Discount -->
 							<div class="relative">
 								<span class="absolute start-1.5 top-1/2 -translate-y-1/2 text-gray-400 text-[10px]">{{ currencySymbol }}</span>
 								<input
-									v-model.number="row.discount"
+									v-model.number="row.actual_discount"
 									type="number"
 									min="0"
 									step="0.01"
 									placeholder="0.00"
 									class="w-full ps-5 pe-1 py-1.5 text-[11px] border border-orange-200 rounded focus:outline-none focus:ring-1 focus:ring-orange-400 bg-white text-end"
-									@input="handleDiscAmountChange(index)"
+									@input="handleActualDiscountChange(index)"
+								/>
+							</div>
+							<!-- Discount (read-only = actual_discount / 1.18) -->
+							<div class="relative">
+								<span class="absolute start-1.5 top-1/2 -translate-y-1/2 text-gray-400 text-[10px]">{{ currencySymbol }}</span>
+								<input
+									:value="row.discount"
+									type="number"
+									readonly
+									placeholder="0.00"
+									class="w-full ps-5 pe-1 py-1.5 text-[11px] border border-orange-200 rounded bg-gray-50 text-end text-gray-500 cursor-not-allowed"
 								/>
 							</div>
 							<!-- Delete -->
@@ -1027,7 +1024,7 @@ const loadingAdvances = ref(false)
 const discountLedgerRows = ref([])
 
 const discountLedgerTotal = computed(() =>
-	discountLedgerRows.value.reduce((sum, row) => sum + (row.discount || 0), 0)
+	discountLedgerRows.value.reduce((sum, row) => sum + (row.actual_discount || 0), 0)
 )
 
 const paymentMethodsResource = createResource({
@@ -1936,7 +1933,7 @@ function completePayment() {
 		remarks: narration.value?.trim() || null,
 		discount_ledger: discountLedgerRows.value.map(row => ({
 			discount_ledger: row.discount_ledger,
-			disc_: row.disc_ || 0,
+			actual_discount: row.actual_discount || 0,
 			discount: row.discount || 0,
 		})),
 	}
@@ -1967,7 +1964,7 @@ function addDiscountLedgerRow() {
 	discountLedgerRows.value.push({
 		discount_ledger: '',
 		discount_ledger_search: '',
-		disc_: 0,
+		actual_discount: 0,
 		discount: 0,
 		showDropdown: false,
 		accountOptions: [],
@@ -1979,19 +1976,9 @@ function removeDiscountLedgerRow(index) {
 	emit('update-additional-discount', discountLedgerTotal.value)
 }
 
-function handleDiscPercChange(index) {
+function handleActualDiscountChange(index) {
 	const row = discountLedgerRows.value[index]
-	if (props.subtotal > 0) {
-		row.discount = parseFloat(((props.subtotal * (row.disc_ || 0)) / 100).toFixed(2))
-	}
-	emit('update-additional-discount', discountLedgerTotal.value)
-}
-
-function handleDiscAmountChange(index) {
-	const row = discountLedgerRows.value[index]
-	if (props.subtotal > 0) {
-		row.disc_ = parseFloat((((row.discount || 0) / props.subtotal) * 100).toFixed(4))
-	}
+	row.discount = parseFloat(((row.actual_discount || 0) / 1.18).toFixed(2))
 	emit('update-additional-discount', discountLedgerTotal.value)
 }
 
@@ -2055,7 +2042,7 @@ watch(
 				discountLedgerRows.value = props.discountLedger.map(row => ({
 					discount_ledger: row.discount_ledger || '',
 					discount_ledger_search: row.discount_ledger || '',
-					disc_: row.disc_ || 0,
+					actual_discount: row.actual_discount || 0,
 					discount: row.discount || 0,
 					showDropdown: false,
 					accountOptions: [],
