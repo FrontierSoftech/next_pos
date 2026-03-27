@@ -22,6 +22,7 @@
   "item",
   "item_group",
   "brand",
+  "item_category",
   "valid_from",
   "valid_upto",
   "coupon_based",
@@ -79,7 +80,7 @@
    "in_list_view": 1,
    "in_standard_filter": 1,
    "label": "Qualifying Transaction / Item",
-   "options": "\nItem Code\nItem Group\nBrand\nTransaction",
+   "options": "\nItem Code\nItem Group\nBrand\nItem Category\nTransaction",
    "reqd": 1
   },
   {
@@ -127,6 +128,12 @@
    "fieldtype": "Link",
    "label": "Apply Rule On Brand",
    "options": "Brand"
+  },
+  {
+   "fieldname": "item_category",
+   "fieldtype": "Link",
+   "label": "Apply Rule On Item Category",
+   "options": "Item Category"
   },
   {
    "default": "0",

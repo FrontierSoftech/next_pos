@@ -12,14 +12,17 @@ export function useInvoice() {
 	const payments = ref([])
 	const salesTeam = ref([]) // Sales team for Sales Invoice
 	const financeLenderPayments = ref([]) // Finance Lender Payments for custom_finance_lender_payments
+	const financeLenderOptions = ref([]) // Cached finance lender options for dropdown
 	const invoiceAdvances = ref([]) // Advances for Sales Invoice advances child table
 	const posProfile = ref(null)
 	const posOpeningShift = ref(null) // POS Opening Shift name
 	const additionalDiscount = ref(0)
+	const discountLedger = ref([]) // Discount Ledger rows for custom_discount_ledger child table
 	const couponCode = ref(null)
 	const taxRules = ref([]) // Tax rules from POS Profile
 	const taxInclusive = ref(false) // Tax inclusive setting from POS Settings
 	const remarks = ref(null) // Remarks/Narration for Sales Invoice
+	const pendingDraftName = ref(null) // ERPNext draft name saved after update_invoice() succeeds, used to avoid orphaned drafts on retry
 
 	// Performance: Incrementally maintained aggregates (updated on add/remove/change)
 	// This avoids O(n) array reductions on every reactive change
@@ -108,6 +111,22 @@ export function useInvoice() {
 	const cleanupDraftsResource = createResource({
 		url: "pos_next.api.invoices.cleanup_old_drafts",
 		auto: false,
+	})
+
+	const getFinanceLendersResource = createResource({
+		url: "pos_next.api.finance_lender.search_finance_lenders",
+		makeParams({ pos_profile }) {
+			return {
+				search_term: "",
+				pos_profile: pos_profile || "",
+				limit: 500,
+			}
+		},
+		auto: false,
+		cache: "financeLenderOptions",
+		onSuccess(data) {
+			financeLenderOptions.value = data || []
+		},
 	})
 
 	// ========================================================================
@@ -708,6 +727,7 @@ export function useInvoice() {
 				type: p.type,
 			})),
 			discount_amount: additionalDiscount.value || 0,
+			apply_discount_on: 'Net Total',
 			coupon_code: couponCode.value,
 			is_pos: 1,
 			update_stock: 1,
@@ -734,6 +754,7 @@ export function useInvoice() {
 
 			const invoiceData = {
 				doctype: "Sales Invoice",
+				...(pendingDraftName.value ? { name: pendingDraftName.value } : {}),
 				pos_profile: posProfile.value,
 				posa_pos_opening_shift: posOpeningShift.value,
 				customer: customer.value?.name || customer.value,
@@ -769,7 +790,15 @@ export function useInvoice() {
 					amount: p.amount,
 					type: p.type,
 				})),
-				discount_amount: additionalDiscount.value || 0,
+				discount_amount: parseFloat(
+					toRaw(discountLedger.value).reduce((sum, row) => sum + (row.discount || 0), 0).toFixed(2)
+				),
+				apply_discount_on: 'Net Total',
+				custom_discount_ledger: toRaw(discountLedger.value).map(row => ({
+					discount_ledger: row.discount_ledger,
+					actual_discount: row.actual_discount || 0,
+					discount: row.discount || 0,
+				})),
 				coupon_code: couponCode.value,
 				is_pos: 1,
 				update_stock: 1, // Critical: Ensures stock is updated
@@ -846,6 +875,9 @@ export function useInvoice() {
 					"Failed to create draft invoice - no invoice name returned",
 				)
 			}
+
+			// Store draft name so a retry can update this draft instead of creating a new one
+			pendingDraftName.value = invoiceDoc.name
 
 			const submitData = {
 				change_amount:
@@ -960,6 +992,7 @@ export function useInvoice() {
 					name: result.customer,
 					customer_name: result.customer_name || result.customer,
 					customer_group: result.customer_group,
+					is_credit_customer: result.is_credit_customer || 0,
 				}
 			}
 		} catch (error) {
@@ -978,8 +1011,10 @@ export function useInvoice() {
 		financeLenderPayments.value = []
 		invoiceAdvances.value = []
 		additionalDiscount.value = 0
+		discountLedger.value = []
 		couponCode.value = null
 		remarks.value = null
+		pendingDraftName.value = null
 
 		// Reset incremental cache
 		_cachedSubtotal.value = 0
@@ -1007,6 +1042,7 @@ export function useInvoice() {
 		payments.value = []
 		financeLenderPayments.value = []
 		additionalDiscount.value = 0
+		discountLedger.value = []
 		couponCode.value = null
 		remarks.value = null
 
@@ -1117,6 +1153,23 @@ export function useInvoice() {
 		rebuildIncrementalCache()
 	}
 
+	async function preloadFinanceLenders() {
+		/**
+		 * Preload finance lender options for the current POS Profile.
+		 * Called when POS profile is selected to avoid latency when
+		 * opening the payment dialog's finance lender dropdown.
+		 */
+		if (!posProfile.value) return
+
+		try {
+			await getFinanceLendersResource.submit({
+				pos_profile: posProfile.value,
+			})
+		} catch (error) {
+			console.error("Error preloading finance lenders:", error)
+		}
+	}
+
 	return {
 		// State
 		invoiceItems,
@@ -1124,10 +1177,12 @@ export function useInvoice() {
 		payments,
 		salesTeam,
 		financeLenderPayments,
+		financeLenderOptions,
 		invoiceAdvances,
 		posProfile,
 		posOpeningShift,
 		additionalDiscount,
+		discountLedger,
 		couponCode,
 		taxRules,
 		taxInclusive,
@@ -1165,6 +1220,7 @@ export function useInvoice() {
 		loadTaxRules,
 		updateTaxesForCustomer,
 		setTaxInclusive,
+		preloadFinanceLenders,
 		recalculateItem,
 		rebuildIncrementalCache,
 
@@ -1175,5 +1231,6 @@ export function useInvoice() {
 		applyOffersResource,
 		getItemDetailsResource,
 		getTaxesResource,
+		getFinanceLendersResource,
 	}
 }

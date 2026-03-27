@@ -109,6 +109,16 @@ def get_pos_settings(pos_profile):
 		frappe.db.get_single_value("Stock Settings", "allow_negative_stock") or 0
 	)
 
+	# Inject credit customer groups (groups with custom_stop_auto_creation = 1)
+	try:
+		settings["_credit_customer_groups"] = frappe.get_all(
+			"Customer Group",
+			filters={"custom_stop_auto_creation": 1},
+			pluck="name",
+		)
+	except Exception:
+		settings["_credit_customer_groups"] = []
+
 	return settings
 
 

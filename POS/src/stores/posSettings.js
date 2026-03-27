@@ -179,6 +179,11 @@ export const usePOSSettingsStore = defineStore("posSettings", () => {
 		Boolean(settings.value.allow_negative_stock),
 	)
 
+	// Computed - Credit Customer Groups
+	const creditCustomerGroups = computed(
+		() => settings.value._credit_customer_groups || [],
+	)
+
 	// Computed - Sales Persons
 	const enableSalesPersons = computed(() =>
 		settings.value.enable_sales_persons !== "Disabled"
@@ -405,6 +410,9 @@ export const usePOSSettingsStore = defineStore("posSettings", () => {
 		// Computed - Miscellaneous
 		inputQty,
 		allowNegativeStock,
+
+		// Computed - Credit Customer Groups
+		creditCustomerGroups,
 
 		// Computed - Sales Persons
 		enableSalesPersons,

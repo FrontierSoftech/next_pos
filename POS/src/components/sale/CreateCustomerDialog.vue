@@ -113,22 +113,6 @@
 								class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
 							/>
 						</div>
-
-						<!-- Address Line 2 -->
-						<div class="mb-3">
-							<label class="block text-start text-sm font-medium text-gray-700 mb-1">
-								{{ __("Address Line 2") }}
-							</label>
-							<input
-								v-model="nonGstData.address_line2"
-								type="text"
-								:placeholder="__('Enter address line 2')"
-								class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-							/>
-						</div>
-
-						<!-- City, State, Country, and Pincode are hidden - auto-filled from POS Profile -->
-						<!-- These fields are populated automatically from POS Profile's company address -->
 					</div>
 				</template>
 
@@ -668,7 +652,6 @@ const canSubmit = computed(() => {
 
 	if (formMode.value === "non-gst") {
 		// Non-GST validation: phone (10 digits), email, profession, address_line1
-		// City, state, country, pincode are auto-filled from POS profile
 		const phoneValid = /^\d{10}$/.test(nonGstData.value.phone_number)
 		const emailValid = nonGstData.value.email_id && 
 			nonGstData.value.email_id.trim() !== "" &&
@@ -677,8 +660,7 @@ const canSubmit = computed(() => {
 			phoneValid &&
 			emailValid &&
 			nonGstData.value.custom_profession &&
-			nonGstData.value.address_line1 &&
-			nonGstData.value.city // Auto-filled from POS profile
+			nonGstData.value.address_line1
 		)
 	} else {
 		// GST validation: gstin, party_name, profession, address_line1, city, state, phone, email
@@ -978,11 +960,7 @@ const prefillFromCustomer = async (customer) => {
 			customer_name: customer.custom_party_name_for_print || "",
 			email_id: customer.email_id || "",
 			custom_profession: customer.custom_profession || "",
-			address_line1: "",
-			address_line2: "",
-			city: "",
-			state: "",
-			pincode: "",
+			address_line1: customer.customer_details || "",
 			country: "India",
 		})
 	}
@@ -1008,15 +986,6 @@ const prefillFromCustomer = async (customer) => {
 				})
 				if (addr.state) gstStateSearchQuery.value = addr.state
 				if (addr.country) countryAddressSearchQuery.value = addr.country
-			} else {
-				Object.assign(nonGstData.value, {
-					address_line1: addr.address_line1 || "",
-					address_line2: addr.address_line2 || "",
-					city: addr.city || "",
-					state: addr.state || "",
-					pincode: addr.pincode || "",
-					country: addr.country || "India",
-				})
 			}
 		}
 	} catch (err) {
@@ -1043,15 +1012,9 @@ const updateCustomer = async () => {
 				email_id: nonGstData.value.email_id || "",
 				custom_profession: nonGstData.value.custom_profession || "",
 				custom_party_name_for_print: nonGstData.value.customer_name || "",
+				customer_details: nonGstData.value.address_line1 || "",
 			}
-			addressData = {
-				address_line1: nonGstData.value.address_line1,
-				address_line2: nonGstData.value.address_line2 || "",
-				city: nonGstData.value.city || "",
-				state: nonGstData.value.state || "",
-				pincode: nonGstData.value.pincode || "",
-				country: nonGstData.value.country || "India",
-			}
+			addressData = null
 		} else {
 			if (!gstData.value.party_name) {
 				return showError(__("Party Name is required"))
@@ -1132,9 +1095,6 @@ const createNonGstCustomer = async () => {
 		return showError(__("Address Line 1 is required"))
 	}
 
-	if (!nonGstData.value.city) {
-		return showError(__("City is required. Please ensure POS Profile has a company address with city."))
-	}
 
 	creating.value = true
 
@@ -1152,41 +1112,11 @@ const createNonGstCustomer = async () => {
 			gst_category: "Unregistered",  // Non-GST is always Unregistered
 			custom_profession: nonGstData.value.custom_profession || "",
 			custom_party_name_for_print: nonGstData.value.customer_name || "",
+			customer_details: nonGstData.value.address_line1 || "",
 		}
 
 		const customerResult = await call("frappe.client.insert", { doc: customerDoc })
 		log.info("Non-GST Customer created", customerResult)
-
-		// Create Address linked to Customer
-		// City, state, pincode are auto-filled from POS Profile company address
-		const addressDoc = {
-			doctype: "Address",
-			address_title: nonGstData.value.phone_number,
-			address_type: "Billing",
-			address_line1: nonGstData.value.address_line1,
-			address_line2: nonGstData.value.address_line2 || "",
-			city: nonGstData.value.city || "",  // Auto-filled from POS Profile
-			state: nonGstData.value.state || "",  // Auto-filled from POS Profile
-			country: nonGstData.value.country || "India",  // Always India for Non-GST
-			pincode: nonGstData.value.pincode || "",  // Auto-filled from POS Profile
-			is_primary_address: 1,
-			is_shipping_address: 1,
-			gst_category: "Unregistered",
-			links: [
-				{
-					link_doctype: "Customer",
-					link_name: customerResult.name,
-				},
-			],
-		}
-
-		try {
-			const addressResult = await call("frappe.client.insert", { doc: addressDoc })
-			log.info("Address created successfully", addressResult)
-		} catch (addrError) {
-			log.error("Failed to create address", addrError)
-			showError(__("Customer created but address could not be saved: {0}", [addrError.message || "Unknown error"]))
-		}
 
 		showSuccess(__("Customer {0} created successfully", [customerResult.customer_name]))
 		emit("customer-created", customerResult)

@@ -98,8 +98,9 @@ def get_place_of_supply(customer, company, shipping_address=None, branch=None):
 			if state_name:
 				return f"{state_code}-{state_name}"
 		
-		# For unregistered customers without branch or if branch didn't have POS: Use address state
-		if customer_address:
+		# For unregistered customers without GSTIN: skip address state — always use company state
+		# This prevents IGST being triggered when the customer's stored address is from a different city
+		if customer_address and not (customer_gst_category == "Unregistered" and not customer_gstin):
 			try:
 				address_data = frappe.db.get_value(
 					"Address",

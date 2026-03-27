@@ -7,6 +7,7 @@ const defaultSnapshot = () => ({
 	itemCodes: [],
 	itemGroups: [],
 	brands: [],
+	itemCategories: [],
 })
 
 function getDiscountSortValue(offer) {
@@ -35,6 +36,7 @@ export const usePOSOffersStore = defineStore("posOffers", () => {
 			? snapshot.itemGroups
 			: []
 		const brands = Array.isArray(snapshot.brands) ? snapshot.brands : []
+		const itemCategories = Array.isArray(snapshot.itemCategories) ? snapshot.itemCategories : []
 
 		cartSnapshot.value = {
 			subtotal,
@@ -42,6 +44,7 @@ export const usePOSOffersStore = defineStore("posOffers", () => {
 			itemCodes,
 			itemGroups,
 			brands,
+			itemCategories,
 		}
 	}
 
@@ -74,6 +77,7 @@ export const usePOSOffersStore = defineStore("posOffers", () => {
 		const cartItemCodes = cartSnapshot.value.itemCodes || []
 		const cartItemGroups = cartSnapshot.value.itemGroups || []
 		const cartBrands = cartSnapshot.value.brands || []
+		const cartItemCategories = cartSnapshot.value.itemCategories || []
 
 		// Check if cart is empty
 		if (itemCount === 0) {
@@ -155,6 +159,19 @@ export const usePOSOffersStore = defineStore("posOffers", () => {
 					return {
 						eligible: false,
 						reason: "Cart does not contain items from eligible brands",
+					}
+				}
+			}
+		} else if (offer?.apply_on === "Item Category") {
+			const eligibleCategories = offer.eligible_item_categories || []
+			if (eligibleCategories.length > 0) {
+				const hasEligibleCategory = eligibleCategories.some((category) =>
+					cartItemCategories.includes(category),
+				)
+				if (!hasEligibleCategory) {
+					return {
+						eligible: false,
+						reason: __("Cart does not contain items from eligible categories"),
 					}
 				}
 			}

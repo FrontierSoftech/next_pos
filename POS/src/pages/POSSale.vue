@@ -293,9 +293,10 @@
 			:allow-partial-payment="posSettingsStore.allowPartialPayment"
 			:allow-credit-sale="posSettingsStore.allowCreditSale"
 			:customer="cartStore.customer"
-			:customer-group="cartStore.customer?.customer_group"
+			:is-credit-customer="!!(cartStore.customer?.customer_group && posSettingsStore.creditCustomerGroups.includes(cartStore.customer.customer_group))"
 			:company="shiftStore.profileCompany"
 			:additional-discount="cartStore.additionalDiscount"
+			:discount-ledger="cartStore.discountLedger"
 			@payment-completed="handlePaymentCompleted"
 			@update-additional-discount="handleAdditionalDiscountUpdate"
 		/>
@@ -1015,6 +1016,9 @@ onMounted(async () => {
 				// Load tax rules with tax_inclusive setting from POS Settings
 				await cartStore.loadTaxRules(shiftStore.profileName, posSettingsStore.settings)
 
+				// Preload finance lender options for faster dropdown loading
+				await cartStore.preloadFinanceLenders()
+
 				// Set default customer from POS Profile if configured
 				await cartStore.setDefaultCustomer()
 
@@ -1621,6 +1625,13 @@ async function handlePaymentCompleted(paymentData) {
 			cartStore.remarks = paymentData.remarks
 		} else {
 			cartStore.remarks = null
+		}
+
+		// Store discount ledger rows if provided
+		if (paymentData.discount_ledger && Array.isArray(paymentData.discount_ledger)) {
+			cartStore.discountLedger = paymentData.discount_ledger
+		} else {
+			cartStore.discountLedger = []
 		}
 
 		// Delete draft if it exists (since we're submitting/saving invoice)

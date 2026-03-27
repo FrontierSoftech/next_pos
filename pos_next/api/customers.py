@@ -65,16 +65,32 @@ def get_customers(search_term="", pos_profile=None, limit=20):
             # No groups found — return all customers without group filter
             frappe.logger().debug("No customer groups found, returning all customers")
 
+        # Fetch groups that allow credit/partial payment (custom_stop_auto_creation = 1)
+        credit_groups = set()
+        try:
+            credit_groups = set(frappe.get_all(
+                "Customer Group",
+                filters={"custom_stop_auto_creation": 1},
+                pluck="name",
+            ))
+        except Exception:
+            pass
+
         # Return all customers (for client-side filtering)
         filters["disabled"] = 0
         customer_limit = limit if limit not in (None, 0) else frappe.db.count("Customer", filters)
         result = frappe.get_all(
             "Customer",
             filters=filters,
-            fields=["name", "customer_name", "mobile_no", "email_id", "custom_party_name_for_print", "customer_group", "custom_profession", "gstin", "gst_category", "customer_type"],
+            fields=["name", "customer_name", "mobile_no", "email_id", "custom_party_name_for_print", "customer_group", "custom_profession", "gstin", "gst_category", "customer_type", "customer_details"],
             limit=customer_limit,
             order_by="customer_name asc",
         )
+
+        # Add is_credit_customer flag based on customer group's custom_stop_auto_creation
+        for customer in result:
+            customer["is_credit_customer"] = 1 if customer.get("customer_group") in credit_groups else 0
+
         frappe.logger().debug(f"get_customers returned {len(result)} customers")
         return result
     except Exception as e:

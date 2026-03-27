@@ -90,6 +90,15 @@ def get_pos_settings(pos_profile):
 
 		# Return settings or defaults if not found
 		if not pos_settings:
+			credit_groups = []
+			try:
+				credit_groups = frappe.get_all(
+					"Customer Group",
+					filters={"custom_stop_auto_creation": 1},
+					pluck="name",
+				)
+			except Exception:
+				pass
 			return {
 				"tax_inclusive": 0,
 				"allow_user_to_edit_additional_discount": 0,
@@ -103,8 +112,19 @@ def get_pos_settings(pos_profile):
 				"allow_partial_payment": 0,
 				"decimal_precision": "2",
 				"allow_negative_stock": 0,
-				"enable_sales_persons": "Disabled"
+				"enable_sales_persons": "Disabled",
+				"_credit_customer_groups": credit_groups,
 			}
+
+		# Inject credit customer groups (groups with custom_stop_auto_creation = 1)
+		try:
+			pos_settings["_credit_customer_groups"] = frappe.get_all(
+				"Customer Group",
+				filters={"custom_stop_auto_creation": 1},
+				pluck="name",
+			)
+		except Exception:
+			pos_settings["_credit_customer_groups"] = []
 
 		return pos_settings
 	except Exception as e:
@@ -346,10 +366,18 @@ def get_default_customer(pos_profile):
 		if default_customer:
 			# Get customer details
 			customer_doc = frappe.get_doc("Customer", default_customer)
+			is_credit_customer = 0
+			try:
+				is_credit_customer = 1 if frappe.db.get_value(
+					"Customer Group", customer_doc.customer_group, "custom_stop_auto_creation"
+				) else 0
+			except Exception:
+				pass
 			return {
 				"customer": default_customer,
 				"customer_name": customer_doc.customer_name,
 				"customer_group": customer_doc.customer_group,
+				"is_credit_customer": is_credit_customer,
 			}
 
 		return {"customer": None}

@@ -80,7 +80,7 @@
 						</div>
 						<div class="min-w-0 flex-1">
 							<p class="text-xs font-semibold text-gray-900 truncate">
-								{{ customer.custom_party_name_for_print || customer.customer_name || customer.name }}<span v-if="customer.customer_group" class="font-normal text-gray-500"> ({{ customer.customer_group }})</span>
+								{{ customer.custom_party_name_for_print || customer.customer_name || customer.name }}<span v-if="customer.customer_group && posSettingsStore.creditCustomerGroups.includes(customer.customer_group)" class="font-normal text-blue-500"> ({{ __('Credit') }})</span><span v-else-if="customer.customer_group" class="font-normal text-gray-500"> ({{ customer.customer_group }})</span>
 							</p>
 							<p v-if="customer.custom_party_name_for_print && (customer.customer_name || customer.name)" class="text-[10px] text-gray-600 truncate">
 								{{ customer.customer_name || customer.name }}
@@ -730,6 +730,7 @@
  * ============================================================================
  */
 import { usePOSCartStore } from "@/stores/posCart"
+import { usePOSSettingsStore } from "@/stores/posSettings"
 import { usePOSOffersStore } from "@/stores/posOffers"
 import { formatCurrency as formatCurrencyUtil } from "@/utils/currency"
 import { useFormatters } from "@/composables/useFormatters"
@@ -747,6 +748,7 @@ import EditItemDialog from "./EditItemDialog.vue"
  */
 const cartStore = usePOSCartStore()      // Pinia store for cart state management
 const offersStore = usePOSOffersStore()  // Pinia store for offers/promotions
+const posSettingsStore = usePOSSettingsStore()
 const { formatQuantity } = useFormatters() // Quantity formatting utilities
 
 /**

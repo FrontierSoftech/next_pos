@@ -68,6 +68,9 @@ const controllers = (frm) => {
 	frm.toggle_display("brand", frm.doc.apply_on === "Brand");
 	frm.toggle_reqd("brand", frm.doc.apply_on === "Brand");
 
+	frm.toggle_display("item_category", frm.doc.apply_on === "Item Category");
+	frm.toggle_reqd("item_category", frm.doc.apply_on === "Item Category");
+
 	frm.toggle_reqd("min_amt", frm.doc.apply_on === "Transaction");
 
 	frm.toggle_display("apply_for_section", frm.doc.offer === "Give Product");

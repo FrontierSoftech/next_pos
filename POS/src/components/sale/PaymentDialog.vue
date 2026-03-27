@@ -147,56 +147,106 @@
 					</div>
 				</div>
 
-					<!-- Additional Discount Section (Compact) -->
+					<!-- Discount Ledger Section -->
 				<div v-if="settingsStore.allowAdditionalDiscount" class="bg-gradient-to-r from-orange-50 to-red-50 border border-orange-300 rounded-lg p-2">
-					<div class="flex items-center justify-between mb-1.5">
-						<div class="flex items-center gap-1.5">
-							<div class="w-5 h-5 rounded-full bg-orange-200 flex items-center justify-center">
-								<svg class="w-3 h-3 text-orange-700" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-									<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
-								</svg>
-							</div>
-							<span class="text-[11px] font-bold text-orange-900">{{ __('Additional Discount') }}</span>
-							<span v-if="localAdditionalDiscount > 0" class="text-[10px] font-bold text-red-600 bg-red-100 px-1.5 py-0.5 rounded">
-								-{{ formatCurrency(additionalDiscountType === 'percentage' ? (subtotal * localAdditionalDiscount / 100) : localAdditionalDiscount) }}
+					<div class="flex items-center justify-between mb-2">
+						<span class="text-[11px] font-bold text-orange-900">{{ __('Discount Ledger') }}</span>
+						<div class="flex items-center gap-2">
+							<span v-if="discountLedgerTotal > 0" class="text-[10px] font-bold text-red-600 bg-red-100 px-1.5 py-0.5 rounded">
+								-{{ formatCurrency(discountLedgerTotal) }}
 							</span>
+							<button
+								@click="addDiscountLedgerRow"
+								class="inline-flex items-center gap-1 px-2 py-1 text-[11px] font-medium rounded bg-orange-100 text-orange-700 hover:bg-orange-200 transition-colors"
+							>
+								+ {{ __('Add Row') }}
+							</button>
 						</div>
-						<button
-							v-if="localAdditionalDiscount > 0"
-							@click="clearAdditionalDiscount"
-							class="text-[10px] text-orange-700 hover:text-orange-900 font-semibold px-1.5 py-0.5 bg-orange-100 hover:bg-orange-200 rounded transition-colors"
-						>
-							{{ __('Clear') }}
-						</button>
 					</div>
-					<div class="grid grid-cols-[100px_1fr] gap-1.5">
-						<!-- Discount Type Selector (Compact) -->
-						<select
-							v-model="additionalDiscountType"
-							@change="handleAdditionalDiscountTypeChange"
-							class="w-full px-1.5 py-1.5 text-[11px] font-medium border border-orange-300 rounded focus:outline-none focus:ring-1 focus:ring-orange-500 focus:border-transparent bg-white"
+					<div v-if="discountLedgerRows.length > 0" class="space-y-1.5">
+						<div
+							v-for="(row, index) in discountLedgerRows"
+							:key="index"
+							class="bg-white border border-orange-200 rounded p-1.5 grid grid-cols-[1fr_90px_80px_24px] gap-1.5 items-center"
 						>
-							<option value="percentage">{{ __('% Percent') }}</option>
-							<option value="amount">{{ __('{0} Amount', [currencySymbol]) }}</option>
-						</select>
-						<!-- Discount Value Input (Compact) -->
-						<div class="relative">
-							<span v-if="additionalDiscountType === 'amount'" class="absolute start-2 top-1/2 -translate-y-1/2 text-gray-600 text-[11px] font-medium">{{ currencySymbol }}</span>
-							<input
-								type="number"
-								v-model.number="localAdditionalDiscount"
-								@input="handleAdditionalDiscountChange"
-								placeholder="0.00"
-								min="0"
-								:max="additionalDiscountType === 'percentage' ? 100 : subtotal"
-								step="0.01"
-								:class="[
-									'w-full py-1.5 text-[11px] font-semibold border border-orange-300 rounded focus:outline-none focus:ring-1 focus:ring-orange-500 focus:border-transparent bg-white placeholder-gray-400',
-									additionalDiscountType === 'amount' ? 'ps-9 pe-2' : 'px-2 pe-6'
-								]"
-							/>
-							<span v-if="additionalDiscountType === 'percentage'" class="absolute end-2 top-1/2 -translate-y-1/2 text-gray-600 text-[11px] font-medium">%</span>
+							<!-- Account Search -->
+							<div class="relative">
+								<input
+									v-model="row.discount_ledger_search"
+									type="text"
+									:placeholder="__('Search account...')"
+									class="w-full px-2 py-1.5 text-[11px] border border-orange-200 rounded focus:outline-none focus:ring-1 focus:ring-orange-400 bg-white"
+									@focus="showDiscountAccountDropdown(index)"
+									@input="searchDiscountAccount(index)"
+									@blur="hideDiscountAccountDropdown(index)"
+								/>
+								<div v-if="row.discount_ledger && !row.showDropdown" class="absolute inset-0 flex items-center">
+									<div class="flex items-center gap-1 mx-1 px-2 py-0.5 bg-orange-100 text-orange-700 rounded text-[11px] flex-1 min-w-0">
+										<span class="truncate">{{ row.discount_ledger }}</span>
+										<button @click.stop="clearDiscountAccount(index)" class="flex-shrink-0 text-orange-400 hover:text-orange-700">
+											<svg class="w-3 h-3" fill="currentColor" viewBox="0 0 20 20">
+												<path fill-rule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clip-rule="evenodd"/>
+											</svg>
+										</button>
+									</div>
+								</div>
+								<div
+									v-if="row.showDropdown && row.accountOptions.length > 0"
+									class="absolute left-0 right-0 top-full mt-1 z-[9999] bg-white border border-gray-200 rounded-lg shadow-xl max-h-40 overflow-y-auto"
+								>
+									<div
+										v-for="option in row.accountOptions"
+										:key="option.name"
+										@mousedown.prevent="selectDiscountAccount(index, option)"
+										class="px-2 py-1.5 cursor-pointer hover:bg-orange-50 border-b border-gray-100 last:border-b-0"
+									>
+										<div class="text-[11px] font-medium text-gray-900">{{ option.name }}</div>
+									</div>
+								</div>
+								<div
+									v-if="row.showDropdown && row.accountOptions.length === 0 && row.discount_ledger_search"
+									class="absolute left-0 right-0 top-full mt-1 z-[9999] bg-white border border-gray-200 rounded-lg shadow-xl p-2"
+								>
+									<div class="text-[11px] text-gray-500 text-center">{{ __('No results') }}</div>
+								</div>
+							</div>
+							<!-- Actual Discount -->
+							<div class="relative">
+								<span class="absolute start-1.5 top-1/2 -translate-y-1/2 text-gray-400 text-[10px]">{{ currencySymbol }}</span>
+								<input
+									v-model.number="row.actual_discount"
+									type="number"
+									min="0"
+									step="0.01"
+									placeholder="0.00"
+									class="w-full ps-5 pe-1 py-1.5 text-[11px] border border-orange-200 rounded focus:outline-none focus:ring-1 focus:ring-orange-400 bg-white text-end"
+									@input="handleActualDiscountChange(index)"
+								/>
+							</div>
+							<!-- Discount (read-only = actual_discount / 1.18) -->
+							<div class="relative">
+								<span class="absolute start-1.5 top-1/2 -translate-y-1/2 text-gray-400 text-[10px]">{{ currencySymbol }}</span>
+								<input
+									:value="row.discount"
+									type="number"
+									readonly
+									placeholder="0.00"
+									class="w-full ps-5 pe-1 py-1.5 text-[11px] border border-orange-200 rounded bg-gray-50 text-end text-gray-500 cursor-not-allowed"
+								/>
+							</div>
+							<!-- Delete -->
+							<button
+								@click="removeDiscountLedgerRow(index)"
+								class="p-0.5 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded transition-colors"
+							>
+								<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+									<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
+								</svg>
+							</button>
 						</div>
+					</div>
+					<div v-else class="text-[11px] text-orange-600 text-center py-1 opacity-70">
+						{{ __('Click Add Row to add a discount entry') }}
 					</div>
 				</div>
 
@@ -361,6 +411,7 @@
 											class="w-full px-2 py-2 text-xs border border-gray-200 rounded focus:outline-none focus:ring-1 focus:ring-purple-500 focus:border-transparent bg-white disabled:bg-gray-100 disabled:cursor-not-allowed"
 											@focus="showLenderDropdown(index)"
 											@input="searchFinanceLender(index)"
+											@keydown="handleLenderKeydown(index, $event)"
 										/>
 										<div v-if="row.finance_lender && !row.showDropdown" class="absolute inset-0 flex items-center">
 											<div class="flex items-center gap-1 mx-1 px-2 py-0.5 bg-purple-100 text-purple-700 rounded text-xs flex-1 min-w-0">
@@ -377,13 +428,15 @@
 										</div>
 										<div
 											v-if="row.showDropdown && row.lenderOptions.length > 0"
+											:data-lender-dropdown="index"
 											class="absolute left-0 right-0 top-full mt-1 z-[9999] bg-white border border-gray-200 rounded-lg shadow-xl max-h-40 overflow-y-auto"
 										>
 											<div
-												v-for="option in row.lenderOptions"
+												v-for="(option, optIndex) in row.lenderOptions"
 												:key="option.name"
+												data-lender-item
 												@click="selectFinanceLender(index, option)"
-												class="px-3 py-2 hover:bg-purple-50 cursor-pointer border-b border-gray-100 last:border-b-0 transition-colors"
+												:class="['px-3 py-2 cursor-pointer border-b border-gray-100 last:border-b-0 transition-colors', optIndex === row.highlightedIndex ? 'bg-purple-100' : 'hover:bg-purple-50']"
 											>
 												<div class="font-medium text-xs text-gray-900">{{ option.name }}</div>
 												<div v-if="option.label" class="text-[10px] text-gray-500">{{ option.label }}</div>
@@ -458,6 +511,7 @@
 										class="w-full px-2 py-1.5 text-xs border border-gray-200 rounded focus:outline-none focus:ring-1 focus:ring-purple-500 focus:border-transparent bg-white disabled:bg-gray-100 disabled:cursor-not-allowed"
 										@focus="showLenderDropdown(index)"
 										@input="searchFinanceLender(index)"
+										@keydown="handleLenderKeydown(index, $event)"
 									/>
 									<!-- Selected Lender Display Chip -->
 									<div v-if="row.finance_lender && !row.showDropdown" class="absolute inset-0 flex items-center">
@@ -476,13 +530,15 @@
 									<!-- Dropdown Results -->
 									<div
 										v-if="row.showDropdown && row.lenderOptions.length > 0"
+										:data-lender-dropdown="index"
 										class="absolute left-0 right-0 top-full mt-1 z-[9999] bg-white border border-gray-200 rounded-lg shadow-xl max-h-40 overflow-y-auto"
 									>
 										<div
-											v-for="option in row.lenderOptions"
+											v-for="(option, optIndex) in row.lenderOptions"
 											:key="option.name"
+											data-lender-item
 											@click="selectFinanceLender(index, option)"
-											class="px-3 py-2 hover:bg-purple-50 cursor-pointer border-b border-gray-100 last:border-b-0 transition-colors"
+											:class="['px-3 py-2 cursor-pointer border-b border-gray-100 last:border-b-0 transition-colors', optIndex === row.highlightedIndex ? 'bg-purple-100' : 'hover:bg-purple-50']"
 										>
 											<div class="font-medium text-xs text-gray-900">{{ option.name }}</div>
 											<div v-if="option.label" class="text-[10px] text-gray-500">{{ option.label }}</div>
@@ -568,7 +624,9 @@
 									? __('Sales Persons')
 									: __('Sales Person')
 								}}
+								<span class="text-red-500 ms-0.5">*</span>
 							</span>
+							<span v-if="selectedSalesPersons.length === 0" class="text-xs font-medium text-red-600 bg-red-50 px-2 py-0.5 rounded border border-red-200">{{ __('Required') }}</span>
 							<span v-if="selectedSalesPersons.length > 0" class="text-xs font-bold text-purple-600 bg-purple-100 px-2 py-0.5 rounded">
 								{{ settingsStore.isSingleSalesPerson
 									? __('1 selected')
@@ -877,14 +935,16 @@
 
 <script setup>
 import { usePOSSettingsStore } from "@/stores/posSettings"
+import { usePOSCartStore } from "@/stores/posCart"
 import { formatCurrency as formatCurrencyUtil, getCurrencySymbol } from "@/utils/currency"
 import { getPaymentIcon } from "@/utils/payment"
 import { offlineWorker } from "@/utils/offline/workerClient"
 import { Dialog, createResource } from "frappe-ui"
-import { computed, ref, watch } from "vue"
+import { computed, nextTick, ref, watch } from "vue"
 import { useToast } from "@/composables/useToast"
 
 const settingsStore = usePOSSettingsStore()
+const cartStore = usePOSCartStore()
 const { showWarning } = useToast()
 
 const props = defineProps({
@@ -918,9 +978,9 @@ const props = defineProps({
 		type: [String, Object],
 		default: null,
 	},
-	customerGroup: {
-		type: String,
-		default: null,
+	isCreditCustomer: {
+		type: Boolean,
+		default: false,
 	},
 	company: {
 		type: String,
@@ -929,6 +989,10 @@ const props = defineProps({
 	additionalDiscount: {
 		type: Number,
 		default: 0,
+	},
+	discountLedger: {
+		type: Array,
+		default: () => [],
 	},
 })
 
@@ -956,11 +1020,11 @@ const loadingFinanceLenders = ref(false)
 const advances = ref([])
 const loadingAdvances = ref(false)
 
-// Additional discount state
-const localAdditionalDiscount = ref(0)
-// Initialize discount type from settings (default to percentage if enabled, otherwise amount)
-const additionalDiscountType = ref(
-	settingsStore.usePercentageDiscount ? 'percentage' : 'amount'
+// Discount Ledger state
+const discountLedgerRows = ref([])
+
+const discountLedgerTotal = computed(() =>
+	discountLedgerRows.value.reduce((sum, row) => sum + (row.actual_discount || 0), 0)
 )
 
 const paymentMethodsResource = createResource({
@@ -979,6 +1043,10 @@ const paymentMethodsResource = createResource({
 			lastSelectedMethod.value = defaultMethod || paymentMethods.value[0]
 		}
 	},
+})
+const searchDiscountAccountResource = createResource({
+	url: 'frappe.client.get_list',
+	auto: false,
 })
 
 const customerCreditResource = createResource({
@@ -1269,15 +1337,24 @@ const changeAmount = computed(() => {
 })
 
 // Check if customer is a Credit Customer (can complete without payments)
-const isCreditCustomer = computed(() => {
-	return props.customerGroup && props.customerGroup.toLowerCase() === 'credit customers'
-})
+// Determined by custom_stop_auto_creation flag on the customer's Customer Group
+const isCreditCustomer = computed(() => props.isCreditCustomer)
 
 const canComplete = computed(() => {
 	// Credit Customers can complete payment without any payments filled in
 	// This creates a credit sale (Pay on Account)
 	if (isCreditCustomer.value) {
 		return true
+	}
+
+	// Disallow completing payment when entered amount exceeds the bill total
+	if (changeAmount.value > 0) {
+		return false
+	}
+
+	// Sales person is mandatory when the feature is enabled
+	if (settingsStore.enableSalesPersons && selectedSalesPersons.value.length === 0) {
+		return false
 	}
 
 	// Check if we have valid finance lender payments
@@ -1579,7 +1656,8 @@ function addFinanceLenderRow() {
 		amount: 0,
 		reference_no: '',
 		showDropdown: true,  // Show dropdown immediately
-		lenderOptions: []
+		lenderOptions: [],
+		highlightedIndex: -1
 	})
 	// Auto-search to populate dropdown with Finance Lender customers
 	searchFinanceLender(newIndex)
@@ -1596,6 +1674,7 @@ function handleModeChange(index) {
 	row.finance_lender_search = ''
 	row.lenderOptions = []
 	row.showDropdown = false
+	row.highlightedIndex = -1
 }
 
 function showLenderDropdown(index) {
@@ -1633,21 +1712,46 @@ async function searchFinanceLender(index) {
 				name: acc.name,
 				label: acc.account_type || ''
 			}))
+			row.highlightedIndex = -1
 		} else if (row.mode === 'Customer') {
-			// Search for customers in Finance Lender group
-			const result = await searchFinanceLendersResource.submit({
-				search_term: searchTerm,
-				pos_profile: props.posProfile,
-			})
-			console.log('[PaymentDialog] Customer search result:', result)
-			row.lenderOptions = (result || []).map(cust => ({
-				name: cust.name,
-				label: cust.customer_name || ''
-			}))
+			// Check if we have cached finance lender options from cartStore
+			const cachedOptions = cartStore.financeLenderOptions
+			if (cachedOptions && cachedOptions.length > 0 && !searchTerm) {
+				// Use cached options when no search term
+				row.lenderOptions = cachedOptions.map(cust => ({
+					name: cust.name,
+					label: cust.customer_name || ''
+				}))
+			} else if (cachedOptions && cachedOptions.length > 0 && searchTerm) {
+				// Filter from cache when there's a search term
+				const searchLower = searchTerm.toLowerCase()
+				row.lenderOptions = cachedOptions
+					.filter(cust => 
+						(cust.name && cust.name.toLowerCase().includes(searchLower)) ||
+						(cust.customer_name && cust.customer_name.toLowerCase().includes(searchLower))
+					)
+					.map(cust => ({
+						name: cust.name,
+						label: cust.customer_name || ''
+					}))
+			} else {
+				// Fallback to API if no cache available
+				const result = await searchFinanceLendersResource.submit({
+					search_term: searchTerm,
+					pos_profile: props.posProfile,
+				})
+				console.log('[PaymentDialog] Customer search result:', result)
+				row.lenderOptions = (result || []).map(cust => ({
+					name: cust.name,
+					label: cust.customer_name || ''
+				}))
+			}
+			row.highlightedIndex = -1
 		}
 	} catch (error) {
 		console.error('Error searching finance lenders:', error)
 		row.lenderOptions = []
+		row.highlightedIndex = -1
 	}
 }
 
@@ -1664,6 +1768,47 @@ function clearFinanceLender(index) {
 	row.finance_lender = ''
 	row.finance_lender_search = ''
 	row.showDropdown = false
+	row.highlightedIndex = -1
+}
+
+function handleLenderKeydown(index, event) {
+	const row = financeLenderPayments.value[index]
+	if (!row.showDropdown || row.lenderOptions.length === 0) return
+	if (event.key === 'ArrowDown') {
+		event.preventDefault()
+		row.highlightedIndex = Math.min(row.highlightedIndex + 1, row.lenderOptions.length - 1)
+		scrollLenderItemIntoView(index)
+	} else if (event.key === 'ArrowUp') {
+		event.preventDefault()
+		row.highlightedIndex = Math.max(row.highlightedIndex - 1, 0)
+		scrollLenderItemIntoView(index)
+	} else if (event.key === 'Enter' && row.highlightedIndex >= 0) {
+		event.preventDefault()
+		selectFinanceLender(index, row.lenderOptions[row.highlightedIndex])
+	} else if (event.key === 'Escape') {
+		row.showDropdown = false
+		row.highlightedIndex = -1
+	}
+}
+
+function scrollLenderItemIntoView(index) {
+	nextTick(() => {
+		// Two dropdowns exist in DOM (mobile + desktop) — pick the visible one
+		const allDropdowns = document.querySelectorAll(`[data-lender-dropdown="${index}"]`)
+		const dropdown = Array.from(allDropdowns).find(el => el.offsetParent !== null)
+		if (!dropdown) return
+		const items = dropdown.querySelectorAll('[data-lender-item]')
+		const row = financeLenderPayments.value[index]
+		const item = items[row.highlightedIndex]
+		if (!item) return
+		const elHeight = item.offsetHeight
+		const scrollTop = dropdown.scrollTop
+		const viewport = scrollTop + dropdown.clientHeight
+		const elOffset = elHeight * row.highlightedIndex
+		if (elOffset < scrollTop || (elOffset + elHeight) > viewport) {
+			dropdown.scrollTop = elOffset
+		}
+	})
 }
 
 function recalculateFinanceLenderTotals() {
@@ -1786,6 +1931,11 @@ function completePayment() {
 		outstanding_amount: isPartial ? remainingAmount.value : 0,
 		sales_team: selectedSalesPersons.value.length > 0 ? selectedSalesPersons.value : null,
 		remarks: narration.value?.trim() || null,
+		discount_ledger: discountLedgerRows.value.map(row => ({
+			discount_ledger: row.discount_ledger,
+			actual_discount: row.actual_discount || 0,
+			discount: row.discount || 0,
+		})),
 	}
 
 	console.log('[PaymentDialog] Emitting payment-completed:', paymentData)
@@ -1807,82 +1957,99 @@ function getMethodTotal(methodName) {
 }
 
 
-// Additional discount handlers
-function handleAdditionalDiscountChange() {
-	let discountValue = localAdditionalDiscount.value
-	let discountAmount = 0
+// Discount Ledger Methods
+// ============================================
 
-	// If percentage mode, calculate amount
-	if (additionalDiscountType.value === 'percentage') {
-		// Validate against max_discount_allowed if configured
-		if (settingsStore.maxDiscountAllowed > 0 && discountValue > settingsStore.maxDiscountAllowed) {
-			localAdditionalDiscount.value = settingsStore.maxDiscountAllowed
-			discountValue = settingsStore.maxDiscountAllowed
-			// Show warning toast
-			showWarning(__('Maximum allowed discount is {0}%', [settingsStore.maxDiscountAllowed]))
-		}
-
-		// Ensure percentage is between 0-100
-		if (discountValue > 100) {
-			localAdditionalDiscount.value = 100
-			discountValue = 100
-		}
-
-		// Convert percentage to amount
-		discountAmount = (props.subtotal * discountValue) / 100
-	} else {
-		// Amount mode
-		discountAmount = discountValue
-
-		// For amount mode, check if it exceeds percentage limit when converted
-		if (settingsStore.maxDiscountAllowed > 0 && props.subtotal > 0) {
-			const percentageEquivalent = (discountAmount / props.subtotal) * 100
-			if (percentageEquivalent > settingsStore.maxDiscountAllowed) {
-				const maxAmount = (props.subtotal * settingsStore.maxDiscountAllowed) / 100
-				localAdditionalDiscount.value = maxAmount
-				discountAmount = maxAmount
-				// Show warning toast
-				showWarning(__('Maximum allowed discount is {0}% ({1} {2})',
-				[settingsStore.maxDiscountAllowed, props.currency, maxAmount.toFixed(2)]))
-			}
-		}
-	}
-
-	// Ensure discount doesn't exceed subtotal
-	if (discountAmount > props.subtotal) {
-		if (additionalDiscountType.value === 'amount') {
-			localAdditionalDiscount.value = props.subtotal
-		}
-		discountAmount = props.subtotal
-	}
-
-	// Ensure non-negative
-	if (discountAmount < 0) {
-		localAdditionalDiscount.value = 0
-		discountAmount = 0
-	}
-
-	emit("update-additional-discount", discountAmount)
+function addDiscountLedgerRow() {
+	discountLedgerRows.value.push({
+		discount_ledger: '',
+		discount_ledger_search: '',
+		actual_discount: 0,
+		discount: 0,
+		showDropdown: false,
+		accountOptions: [],
+	})
 }
 
-function handleAdditionalDiscountTypeChange() {
-	// Don't reset - preserve last value when toggling type
-	// Just recalculate to ensure it's within limits
-	handleAdditionalDiscountChange()
+function removeDiscountLedgerRow(index) {
+	discountLedgerRows.value.splice(index, 1)
+	emit('update-additional-discount', discountLedgerTotal.value)
 }
 
-function clearAdditionalDiscount() {
-	localAdditionalDiscount.value = 0
-	emit("update-additional-discount", 0)
+function handleActualDiscountChange(index) {
+	const row = discountLedgerRows.value[index]
+	row.discount = parseFloat(((row.actual_discount || 0) / 1.18).toFixed(2))
+	emit('update-additional-discount', discountLedgerTotal.value)
 }
 
-// Watch for dialog open to sync additional discount from parent
+function showDiscountAccountDropdown(index) {
+	const row = discountLedgerRows.value[index]
+	row.showDropdown = true
+	searchDiscountAccount(index)
+}
+
+function hideDiscountAccountDropdown(index) {
+	const row = discountLedgerRows.value[index]
+	// Delay to allow mousedown on option to fire first
+	setTimeout(() => {
+		row.showDropdown = false
+	}, 200)
+}
+
+async function searchDiscountAccount(index) {
+	const row = discountLedgerRows.value[index]
+	row.showDropdown = true
+	const searchTerm = row.discount_ledger_search || ''
+	try {
+		const result = await searchDiscountAccountResource.submit({
+			doctype: 'Account',
+			filters: JSON.stringify([
+				['custom_is_discount_ledger', '=', 1],
+				['name', 'like', `%${searchTerm}%`],
+			]),
+			fields: JSON.stringify(['name']),
+			limit_page_length: 10,
+		})
+		const data = result?.message || result || []
+		row.accountOptions = Array.isArray(data) ? data : []
+	} catch (e) {
+		row.accountOptions = []
+	}
+}
+
+function selectDiscountAccount(index, option) {
+	const row = discountLedgerRows.value[index]
+	row.discount_ledger = option.name
+	row.discount_ledger_search = option.name
+	row.showDropdown = false
+	row.accountOptions = []
+}
+
+function clearDiscountAccount(index) {
+	const row = discountLedgerRows.value[index]
+	row.discount_ledger = ''
+	row.discount_ledger_search = ''
+	row.accountOptions = []
+}
+
+// Watch for dialog open to sync discount ledger rows from parent prop
 watch(
 	() => props.modelValue,
 	(isOpen) => {
 		if (isOpen) {
-			// Only sync when dialog opens, not continuously
-			localAdditionalDiscount.value = props.additionalDiscount || 0
+			// Restore rows from parent prop when dialog opens
+			if (props.discountLedger && props.discountLedger.length > 0) {
+				discountLedgerRows.value = props.discountLedger.map(row => ({
+					discount_ledger: row.discount_ledger || '',
+					discount_ledger_search: row.discount_ledger || '',
+					actual_discount: row.actual_discount || 0,
+					discount: row.discount || 0,
+					showDropdown: false,
+					accountOptions: [],
+				}))
+			} else {
+				discountLedgerRows.value = []
+			}
 		}
 	},
 )
