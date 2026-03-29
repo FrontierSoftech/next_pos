@@ -123,7 +123,6 @@ export function useInvoice() {
 			}
 		},
 		auto: false,
-		cache: "financeLenderOptions",
 		onSuccess(data) {
 			financeLenderOptions.value = data || []
 		},
