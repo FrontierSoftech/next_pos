@@ -235,6 +235,7 @@
 						@show-history="uiStore.showHistoryDialog = true"
 						@show-return="uiStore.showReturnDialog = true"
 						@close-shift="handleCloseShift()"
+						@show-advances="uiStore.showAdvancesDialog = true"
 					/>
 				</div>
 			</keep-alive>
@@ -319,6 +320,14 @@
 			v-model="uiStore.showCloseShiftDialog"
 			:opening-shift="shiftStore.currentShift?.name"
 			@shift-closed="handleShiftClosed"
+		/>
+
+		<!-- Advances Dialog -->
+		<AdvancesDialog
+			v-model="uiStore.showAdvancesDialog"
+			:pos-profile="shiftStore.profileName"
+			:currency="shiftStore.profileCurrency"
+			:selected-customer="cartStore.customer?.name || cartStore.customer || ''"
 		/>
 
 		<!-- Draft Invoices Dialog -->
@@ -698,6 +707,7 @@ import CouponDialog from "@/components/sale/CouponDialog.vue"
 import CreateCustomerDialog from "@/components/sale/CreateCustomerDialog.vue"
 import CustomerDialog from "@/components/sale/CustomerDialog.vue"
 import DraftInvoicesDialog from "@/components/sale/DraftInvoicesDialog.vue"
+import AdvancesDialog from "@/components/sale/AdvancesDialog.vue"
 import InvoiceCart from "@/components/sale/InvoiceCart.vue"
 import InvoiceHistoryDialog from "@/components/sale/InvoiceHistoryDialog.vue"
 import ItemSelectionDialog from "@/components/sale/ItemSelectionDialog.vue"

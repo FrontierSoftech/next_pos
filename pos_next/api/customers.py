@@ -252,3 +252,98 @@ def get_profession_options():
         frappe.log_error(f"Error fetching profession options: {str(e)}", "Get Profession Options Error")
         # Return default professions on error
         return ["Doctor", "Accountant", "Business", "CA", "Student"]
+
+
+@frappe.whitelist()
+def get_journal_entry_defaults(pos_profile):
+    """
+    Return defaults for a new Journal Entry pre-filled from the POS Profile.
+
+    Returns company, branch, cost_center (from branch), posting_date, and naming_series options.
+    """
+    try:
+        profile = frappe.db.get_value(
+            "POS Profile", pos_profile, ["company", "branch"], as_dict=True
+        )
+        if not profile:
+            frappe.throw(_("POS Profile not found: {0}").format(pos_profile))
+
+        branch = profile.get("branch")
+        cost_center = None
+        if branch:
+            cost_center = frappe.db.get_value("Branch", branch, "custom_cost_center")
+
+        je_meta = frappe.get_meta("Journal Entry")
+        naming_field = next(
+            (f for f in je_meta.fields if f.fieldname == "naming_series"), None
+        )
+        naming_series_options = (
+            [s.strip() for s in naming_field.options.split("\n") if s.strip()]
+            if naming_field
+            else []
+        )
+
+        return {
+            "company": profile.get("company"),
+            "branch": branch,
+            "cost_center": cost_center,
+            "posting_date": frappe.utils.today(),
+            "naming_series_options": naming_series_options,
+        }
+    except Exception as e:
+        frappe.log_error(
+            f"Error fetching JE defaults: {str(e)}", "Get Journal Entry Defaults Error"
+        )
+        frappe.throw(_("Failed to fetch Journal Entry defaults"))
+
+
+@frappe.whitelist()
+def save_journal_entry(data):
+    """
+    Create and save a new Journal Entry document.
+
+    Args:
+        data (dict): Journal Entry fields including accounts child table
+
+    Returns:
+        str: Name of the created Journal Entry
+    """
+    import json
+
+    try:
+        if isinstance(data, str):
+            data = json.loads(data)
+
+        je = frappe.new_doc("Journal Entry")
+        je.update(data)
+        je.insert(ignore_permissions=False)
+        je.submit()
+        return {"name": je.name, "status": je.docstatus}
+    except Exception as e:
+        frappe.log_error(
+            f"Error saving Journal Entry: {str(e)}", "Save Journal Entry Error"
+        )
+        frappe.throw(_("Failed to save Journal Entry: {0}").format(str(e)))
+
+
+@frappe.whitelist()
+def get_customer_default_account(customer, company):
+    """
+    Return the default receivable account for a customer.
+
+    Looks up Party Account child table on the Customer doc (Accounting > Default Accounts).
+    Falls back to 'Debtors - {company abbreviation}' style account, then 'Debtors - IC'.
+    """
+    try:
+        account = frappe.db.get_value(
+            "Party Account",
+            {"parent": customer, "parenttype": "Customer", "company": company},
+            "account",
+        )
+        return account if account else "Debtors - IC"
+    except Exception as e:
+        frappe.log_error(
+            f"Error fetching customer default account: {str(e)}",
+            "Get Customer Default Account Error",
+        )
+        return "Debtors - IC"
