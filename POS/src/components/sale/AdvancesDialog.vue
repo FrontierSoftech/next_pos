@@ -163,7 +163,13 @@
 												min="0"
 												step="0.01"
 												placeholder="0.00"
-												class="w-full px-2 py-1.5 border border-gray-300 rounded text-xs text-end focus:outline-none focus:ring-1 focus:ring-blue-500"
+												:disabled="idx === 0 && !!props.selectedCustomer"
+												:class="[
+													'w-full px-2 py-1.5 border rounded text-xs text-end focus:outline-none focus:ring-1 focus:ring-blue-500',
+													idx === 0 && !!props.selectedCustomer
+														? 'border-gray-200 bg-gray-50 text-gray-400 cursor-not-allowed'
+														: 'border-gray-300'
+												]"
 											/>
 										</td>
 
@@ -290,7 +296,7 @@ const props = defineProps({
 	},
 })
 
-const emit = defineEmits(["update:modelValue"])
+const emit = defineEmits(["update:modelValue", "saved"])
 
 const { showSuccess, showError } = useToast()
 
@@ -484,6 +490,7 @@ async function saveJournalEntry() {
 		})
 
 		showSuccess(__("Journal Entry {0} saved successfully", [result.name]))
+		emit("saved")
 		show.value = false
 	} catch (err) {
 		console.error("Failed to save JE:", err)

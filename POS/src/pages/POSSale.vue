@@ -328,6 +328,7 @@
 			:pos-profile="shiftStore.profileName"
 			:currency="shiftStore.profileCurrency"
 			:selected-customer="cartStore.customer?.name || cartStore.customer || ''"
+			@saved="cartStore.setCustomer(null)"
 		/>
 
 		<!-- Draft Invoices Dialog -->
