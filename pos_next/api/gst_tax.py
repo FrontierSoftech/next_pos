@@ -16,59 +16,50 @@ from frappe import _
 def get_place_of_supply(customer, company, shipping_address=None, branch=None):
 	"""
 	Determine Place of Supply for a sales transaction.
-	
+
 	Logic:
 	1. For non-GST (Unregistered) customers: Use branch's custom_place_of_supply
 	2. For GST registered customers: Use GSTIN state code (first 2 digits) or customer address state
 	3. For overseas customers: Use overseas place of supply logic
 	4. Format: "27-Maharashtra" (state_code-state_name)
-	
+
 	Args:
 		customer: Customer name
 		company: Company name
 		shipping_address: Optional shipping address name
 		branch: Optional branch name (used for non-GST customers)
-		
+
 	Returns:
 		str: Place of supply in format "XX-State Name" or None
 	"""
 	try:
 		if not customer or not company:
 			return None
-		
+
 		# Get customer details using db.get_value to avoid document locks
-		customer_data = frappe.db.get_value(
-			"Customer",
-			customer,
-			["gstin", "gst_category"],
-			as_dict=True
-		)
-		
+		customer_data = frappe.db.get_value("Customer", customer, ["gstin", "gst_category"], as_dict=True)
+
 		if not customer_data:
 			return None
-		
+
 		customer_gstin = customer_data.get("gstin")
 		customer_gst_category = customer_data.get("gst_category") or "Unregistered"
-		
+
 		# Handle overseas customers
 		if customer_gst_category == "Overseas":
 			return get_overseas_place_of_supply(shipping_address)
-		
+
 		# For non-GST (Unregistered) customers WITHOUT GSTIN: Use branch's place_of_supply
 		# Guard: if customer has a GSTIN, always use the GSTIN state code (done below)
 		if customer_gst_category == "Unregistered" and not customer_gstin and branch:
 			try:
-				branch_pos = frappe.db.get_value(
-					"Branch",
-					branch,
-					"custom_place_of_supply"
-				)
+				branch_pos = frappe.db.get_value("Branch", branch, "custom_place_of_supply")
 				if branch_pos:
 					return branch_pos
 			except Exception:
 				# If branch lookup fails, continue to other logic
 				pass
-		
+
 		# Get customer address (billing or shipping)
 		customer_address = None
 		if shipping_address:
@@ -76,7 +67,8 @@ def get_place_of_supply(customer, company, shipping_address=None, branch=None):
 		else:
 			# Get default billing address - use optimized SQL to avoid locks
 			try:
-				customer_address = frappe.db.sql("""
+				customer_address = frappe.db.sql(
+					"""
 					SELECT a.name 
 					FROM `tabAddress` a
 					INNER JOIN `tabDynamic Link` dl ON dl.parent = a.name
@@ -85,40 +77,40 @@ def get_place_of_supply(customer, company, shipping_address=None, branch=None):
 					AND dl.parenttype = 'Address'
 					AND a.is_primary_address = 1
 					LIMIT 1
-				""", (customer,), as_dict=True)
+				""",
+					(customer,),
+					as_dict=True,
+				)
 				customer_address = customer_address[0].name if customer_address else None
 			except Exception:
 				# If query fails, continue without address
 				customer_address = None
-		
+
 		# For GST registered customers with GSTIN: Use GSTIN state code
 		if customer_gstin and len(customer_gstin) >= 2:
 			state_code = customer_gstin[:2]
 			state_name = get_state_name(state_code)
 			if state_name:
 				return f"{state_code}-{state_name}"
-		
+
 		# For unregistered customers without GSTIN: skip address state — always use company state
 		# This prevents IGST being triggered when the customer's stored address is from a different city
 		if customer_address and not (customer_gst_category == "Unregistered" and not customer_gstin):
 			try:
 				address_data = frappe.db.get_value(
-					"Address",
-					customer_address,
-					["gst_state_number", "gst_state"],
-					as_dict=True
+					"Address", customer_address, ["gst_state_number", "gst_state"], as_dict=True
 				)
-				
+
 				if address_data:
 					gst_state_number = address_data.get("gst_state_number")
 					gst_state = address_data.get("gst_state")
-					
+
 					if gst_state_number and gst_state:
 						return f"{gst_state_number}-{gst_state}"
 			except Exception:
 				# If address lookup fails, continue to fallback
 				pass
-		
+
 		# Fallback: Use company GSTIN state
 		company_gstin = frappe.db.get_value("Company", company, "gstin")
 		if company_gstin and len(company_gstin) >= 2:
@@ -126,7 +118,7 @@ def get_place_of_supply(customer, company, shipping_address=None, branch=None):
 			state_name = get_state_name(state_code)
 			if state_name:
 				return f"{state_code}-{state_name}"
-		
+
 		return None
 	except Exception as e:
 		# Log error but don't break invoice creation
@@ -137,40 +129,37 @@ def get_place_of_supply(customer, company, shipping_address=None, branch=None):
 def get_overseas_place_of_supply(shipping_address):
 	"""
 	Determine place of supply for overseas customers.
-	
+
 	If shipping address is in India, use that state.
 	Otherwise, use "96-Other Countries"
 	"""
 	if not shipping_address:
 		return "96-Other Countries"
-	
+
 	address_data = frappe.db.get_value(
-		"Address",
-		shipping_address,
-		["country", "gst_state_number", "gst_state"],
-		as_dict=True
+		"Address", shipping_address, ["country", "gst_state_number", "gst_state"], as_dict=True
 	)
-	
+
 	if not address_data:
 		return "96-Other Countries"
-	
+
 	country = address_data.get("country")
 	gst_state_number = address_data.get("gst_state_number")
 	gst_state = address_data.get("gst_state")
-	
+
 	if country == "India" and gst_state_number and gst_state:
 		return f"{gst_state_number}-{gst_state}"
-	
+
 	return "96-Other Countries"
 
 
 def get_source_state_code(company):
 	"""
 	Get the state code of the company (source state).
-	
+
 	Args:
 		company: Company name
-		
+
 	Returns:
 		str: State code (first 2 digits of company GSTIN) or None
 	"""
@@ -183,69 +172,55 @@ def get_source_state_code(company):
 def is_inter_state_supply(customer, company, shipping_address=None, branch=None):
 	"""
 	Determine if the supply is inter-state or intra-state.
-	
+
 	Inter-state: Place of supply state != Company state
 	Intra-state: Place of supply state == Company state
-	
+
 	Args:
 		customer: Customer name
 		company: Company name
 		shipping_address: Optional shipping address name
 		branch: Optional branch name (used for non-GST customers)
-		
+
 	Returns:
 		bool: True if inter-state, False if intra-state
 	"""
 	try:
 		if not customer or not company:
 			return False
-		
+
 		# Get customer GST details
-		customer_data = frappe.db.get_value(
-			"Customer",
-			customer,
-			["gst_category", "gstin"],
-			as_dict=True
-		) or {}
-		
+		customer_data = (
+			frappe.db.get_value("Customer", customer, ["gst_category", "gstin"], as_dict=True) or {}
+		)
+
 		customer_gst_category = customer_data.get("gst_category") or "Unregistered"
 		customer_gstin = customer_data.get("gstin")
-		
+
 		# SEZ is always inter-state
 		if customer_gst_category == "SEZ":
 			return True
-		
-		# For non-GST customers WITHOUT GSTIN, use branch place_of_supply if available
-		if customer_gst_category == "Unregistered" and not customer_gstin and branch:
-			try:
-				branch_pos = frappe.db.get_value(
-					"Branch",
-					branch,
-					"custom_place_of_supply"
-				)
-				if branch_pos:
-					# Compare branch place_of_supply with company state
-					company_state_code = get_source_state_code(company)
-					if company_state_code:
-						pos_state_code = branch_pos[:2] if len(branch_pos) >= 2 else None
-						return pos_state_code != company_state_code
-			except Exception:
-				pass
-		
+
+		# For non-GST customers WITHOUT GSTIN: Always intra-state (CGST+SGST)
+		# Non-GST customers are not eligible for inter-state supply treatment.
+		# The place of supply is the seller's location (branch), and GST is always CGST+SGST.
+		if customer_gst_category == "Unregistered" and not customer_gstin:
+			return False
+
 		# Get place of supply
 		place_of_supply = get_place_of_supply(customer, company, shipping_address, branch)
 		if not place_of_supply:
 			# If we can't determine place of supply, default to intra-state (safe)
 			return False
-		
+
 		# Get company state code
 		company_state_code = get_source_state_code(company)
 		if not company_state_code:
 			return False
-		
+
 		# Extract state code from place of supply (format: "27-Maharashtra")
 		pos_state_code = place_of_supply[:2] if len(place_of_supply) >= 2 else None
-		
+
 		# Compare state codes
 		return pos_state_code != company_state_code
 	except Exception as e:
@@ -257,36 +232,54 @@ def is_inter_state_supply(customer, company, shipping_address=None, branch=None)
 def get_gst_tax_template(company, customer=None, shipping_address=None, is_inter_state=None, branch=None):
 	"""
 	Get the appropriate GST tax template based on inter-state/intra-state.
-	
+
 	This function:
 	1. First tries to use Tax Category (if India Compliance is installed)
 	2. Falls back to template name patterns
-	
+
 	Args:
 		company: Company name
 		customer: Customer name (optional)
 		shipping_address: Shipping address name (optional)
 		is_inter_state: Boolean (optional) - if not provided, will be calculated
 		branch: Branch name (optional) - used for non-GST customers
-		
+
 	Returns:
 		str: Tax template name or None
 	"""
 	try:
 		if not company:
 			return None
-		
+
+		# Always recalculate is_inter_state for unregistered customers
+		# ERPNext/India Compliance may pass incorrect value for non-GST customers
+		if customer:
+			is_inter_state = is_inter_state_supply(customer, company, shipping_address, branch)
+		elif is_inter_state is None:
+			is_inter_state = False
+
+		# Try to use Tax Category (India Compliance integration)
+		tax_template = get_tax_template_from_category(company, is_inter_state)
+		if tax_template:
+			return tax_template
+
+		# Fallback to template name patterns
+		return get_tax_template_by_pattern(company, is_inter_state)
+	except Exception as e:
+		frappe.log_error(f"Error in get_gst_tax_template: {str(e)}", "GST Tax Error")
+		return None
+
 		# Determine inter-state if not provided
 		if is_inter_state is None and customer:
 			is_inter_state = is_inter_state_supply(customer, company, shipping_address, branch)
 		elif is_inter_state is None:
 			is_inter_state = False
-		
+
 		# Try to use Tax Category (India Compliance integration)
 		tax_template = get_tax_template_from_category(company, is_inter_state)
 		if tax_template:
 			return tax_template
-		
+
 		# Fallback to template name patterns
 		return get_tax_template_by_pattern(company, is_inter_state)
 	except Exception as e:
@@ -298,18 +291,18 @@ def get_gst_tax_template(company, customer=None, shipping_address=None, is_inter
 def get_tax_template_from_category(company, is_inter_state):
 	"""
 	Get tax template using Tax Category (India Compliance integration).
-	
+
 	Args:
 		company: Company name
 		is_inter_state: Boolean
-		
+
 	Returns:
 		str: Tax template name or None
 	"""
 	# Check if Tax Category doctype exists (India Compliance)
 	if not frappe.db.exists("DocType", "Tax Category"):
 		return None
-	
+
 	try:
 		# Find Tax Category with matching is_inter_state flag
 		tax_categories = frappe.get_all(
@@ -319,14 +312,14 @@ def get_tax_template_from_category(company, is_inter_state):
 				"is_inter_state": 1 if is_inter_state else 0,
 				"disabled": 0,
 			},
-			limit=1
+			limit=1,
 		)
-		
+
 		if not tax_categories:
 			return None
-		
+
 		tax_category = tax_categories[0].name
-		
+
 		# Find Sales Taxes and Charges Template linked to this Tax Category
 		# Exclude RCM templates - they should only be used when is_reverse_charge = 1
 		tax_template = frappe.db.get_value(
@@ -337,9 +330,9 @@ def get_tax_template_from_category(company, is_inter_state):
 				"disabled": 0,
 			},
 			"name",
-			order_by="name"
+			order_by="name",
 		)
-		
+
 		# If template name contains "RCM", try to find a non-RCM alternative
 		if tax_template and "RCM" in tax_template.upper():
 			# Try to find a non-RCM template with same tax category
@@ -349,16 +342,16 @@ def get_tax_template_from_category(company, is_inter_state):
 					"company": company,
 					"tax_category": tax_category,
 					"disabled": 0,
-					"name": ["not like", "%RCM%"]
+					"name": ["not like", "%RCM%"],
 				},
 				"name",
-				order_by="name"
+				order_by="name",
 			)
 			if non_rcm_template:
 				return non_rcm_template
 			# If no non-RCM template found, return None (will fall back to pattern matching)
 			return None
-		
+
 		return tax_template
 	except Exception:
 		# Tax Category might not be configured properly
@@ -368,89 +361,93 @@ def get_tax_template_from_category(company, is_inter_state):
 def get_tax_template_by_pattern(company, is_inter_state):
 	"""
 	Get tax template by searching for name patterns.
-	
+
 	Args:
 		company: Company name
 		is_inter_state: Boolean
-		
+
 	Returns:
 		str: Tax template name or None
 	"""
 	if is_inter_state:
 		# Look for inter-state templates (IGST)
 		patterns = [
-			'Output GST Out-state%',
-			'%Out-state%',
-			'%Out State%',
-			'%IGST%',
-			'%Inter-state%',
-			'%Inter State%',
+			"Output GST Out-state%",
+			"%Out-state%",
+			"%Out State%",
+			"%IGST%",
+			"%Inter-state%",
+			"%Inter State%",
 		]
 	else:
 		# Look for intra-state templates (CGST+SGST)
 		patterns = [
-			'Output GST In-state%',
-			'%In-state%',
-			'%In State%',
-			'%Intra-state%',
-			'%Intra State%',
+			"Output GST In-state%",
+			"%In-state%",
+			"%In State%",
+			"%Intra-state%",
+			"%Intra State%",
 		]
-	
+
 	for pattern in patterns:
-		template = frappe.db.sql("""
+		template = frappe.db.sql(
+			"""
 			SELECT name FROM `tabSales Taxes and Charges Template`
 			WHERE company = %s
 			AND disabled = 0
 			AND name LIKE %s
 			AND name NOT LIKE '%%RCM%%'
 			LIMIT 1
-		""", (company, pattern), as_dict=True)
-		
+		""",
+			(company, pattern),
+			as_dict=True,
+		)
+
 		if template:
 			return template[0].name
-	
+
 	# Fallback: any active non-RCM template
-	fallback = frappe.db.sql("""
+	fallback = frappe.db.sql(
+		"""
 		SELECT name FROM `tabSales Taxes and Charges Template`
 		WHERE company = %s
 		AND disabled = 0
 		AND name NOT LIKE '%%RCM%%'
 		LIMIT 1
-	""", (company,), as_dict=True)
-	
+	""",
+		(company,),
+		as_dict=True,
+	)
+
 	return fallback[0].name if fallback else None
 
 
 def get_state_name(state_code):
 	"""
 	Get state name from state code.
-	
+
 	Uses India Compliance's STATE_NUMBERS if available, otherwise returns None.
-	
+
 	Args:
 		state_code: State code (2-digit string)
-		
+
 	Returns:
 		str: State name or None
 	"""
 	try:
 		# Try to use India Compliance's STATE_NUMBERS
 		from india_compliance.gst_india.constants import STATE_NUMBERS
+
 		# Reverse lookup: find state name by code
 		for state_name, code in STATE_NUMBERS.items():
 			if str(code) == str(state_code):
 				return state_name
 	except ImportError:
 		# India Compliance not installed, try to get from Address
-		state = frappe.db.get_value(
-			"Address",
-			{"gst_state_number": state_code},
-			"gst_state",
-			limit=1
-		)
+		state = frappe.db.get_value("Address", {"gst_state_number": state_code}, "gst_state", limit=1)
 		if state:
 			return state
-	
+
 	return None
 
 
@@ -458,19 +455,19 @@ def get_state_name(state_code):
 def get_gst_details(customer, company, shipping_address=None):
 	"""
 	Get comprehensive GST details for a customer-company combination.
-	
+
 	This is the main API endpoint that returns:
 	- place_of_supply
 	- is_inter_state
 	- tax_template
 	- company_state_code
 	- customer_state_code
-	
+
 	Args:
 		customer: Customer name
 		company: Company name
 		shipping_address: Optional shipping address name
-		
+
 	Returns:
 		dict: GST details
 	"""
@@ -482,13 +479,13 @@ def get_gst_details(customer, company, shipping_address=None):
 			"company_state_code": None,
 			"customer_state_code": None,
 		}
-	
+
 	# Get place of supply
 	place_of_supply = get_place_of_supply(customer, company, shipping_address)
-	
+
 	# Get company state code
 	company_state_code = get_source_state_code(company)
-	
+
 	# Get customer state code
 	customer_state_code = None
 	customer_gstin = frappe.db.get_value("Customer", customer, "gstin")
@@ -497,7 +494,8 @@ def get_gst_details(customer, company, shipping_address=None):
 	else:
 		# Try to get from address - use optimized SQL to avoid locks
 		try:
-			customer_address = frappe.db.sql("""
+			customer_address = frappe.db.sql(
+				"""
 				SELECT a.name 
 				FROM `tabAddress` a
 				INNER JOIN `tabDynamic Link` dl ON dl.parent = a.name
@@ -506,24 +504,25 @@ def get_gst_details(customer, company, shipping_address=None):
 				AND dl.parenttype = 'Address'
 				AND a.is_primary_address = 1
 				LIMIT 1
-			""", (customer,), as_dict=True)
-			
+			""",
+				(customer,),
+				as_dict=True,
+			)
+
 			if customer_address:
 				customer_state_code = frappe.db.get_value(
-					"Address",
-					customer_address[0].name,
-					"gst_state_number"
+					"Address", customer_address[0].name, "gst_state_number"
 				)
 		except Exception:
 			# If query fails, customer_state_code remains None
 			pass
-	
+
 	# Determine inter-state
 	is_inter_state = is_inter_state_supply(customer, company, shipping_address)
-	
+
 	# Get tax template
 	tax_template = get_gst_tax_template(company, customer, shipping_address, is_inter_state)
-	
+
 	return {
 		"place_of_supply": place_of_supply,
 		"is_inter_state": is_inter_state,

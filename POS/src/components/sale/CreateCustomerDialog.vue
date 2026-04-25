@@ -960,7 +960,7 @@ const prefillFromCustomer = async (customer) => {
 			customer_name: customer.custom_party_name_for_print || "",
 			email_id: customer.email_id || "",
 			custom_profession: customer.custom_profession || "",
-			address_line1: customer.customer_details || "",
+			address_line1: customer.custom_address_for_print || customer.customer_details || "",
 			country: "India",
 		})
 	}
@@ -1013,6 +1013,7 @@ const updateCustomer = async () => {
 				custom_profession: nonGstData.value.custom_profession || "",
 				custom_party_name_for_print: nonGstData.value.customer_name || "",
 				customer_details: nonGstData.value.address_line1 || "",
+				custom_address_for_print: nonGstData.value.address_line1 || "",
 			}
 			addressData = null
 		} else {
@@ -1113,6 +1114,7 @@ const createNonGstCustomer = async () => {
 			custom_profession: nonGstData.value.custom_profession || "",
 			custom_party_name_for_print: nonGstData.value.customer_name || "",
 			customer_details: nonGstData.value.address_line1 || "",
+			custom_address_for_print: nonGstData.value.address_line1 || "",
 		}
 
 		const customerResult = await call("frappe.client.insert", { doc: customerDoc })

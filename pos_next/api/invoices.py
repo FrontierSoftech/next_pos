@@ -638,9 +638,13 @@ def update_invoice(data):
             except Exception:
                 pass
 
-        # Save as draft
+        # Save as draft — but only if not already submitted
         invoice_doc.flags.ignore_permissions = True
         frappe.flags.ignore_account_permission = True
+        db_docstatus = frappe.db.get_value(doctype, invoice_doc.name, "docstatus") if invoice_doc.name else None
+        if db_docstatus == 1:
+            # Invoice already submitted; return it without attempting a draft save
+            return invoice_doc.as_dict()
         invoice_doc.docstatus = 0
         invoice_doc.save()
 

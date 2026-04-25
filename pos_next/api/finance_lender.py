@@ -119,6 +119,8 @@ def search_finance_lenders(search_term="", pos_profile=None, limit=20):
 		conditions.append("(name LIKE %(search_pattern)s OR customer_name LIKE %(search_pattern)s)")
 		params["search_pattern"] = f"%{search_term}%"
 
+	conditions.append("disabled = 0")
+
 	where_clause = " AND ".join(conditions)
 
 	customers = frappe.db.sql(
