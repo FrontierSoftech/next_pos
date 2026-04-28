@@ -393,11 +393,12 @@ def search_by_barcode(barcode, pos_profile):
 				item_code = frappe.db.get_value("Item", {"custom_alias": barcode, "disabled": 0})
 
 			# If still not found, try searching in Serial No table
+		# ONLY search within the POS Profile's warehouse
 		found_serial_no = None
 		if not item_code:
 			serial_data = frappe.db.get_value(
 				"Serial No",
-				{"name": barcode, "status": "Active"},
+				{"name": barcode, "status": "Active", "warehouse": pos_profile_doc.warehouse},
 				["item_code", "warehouse"],
 				as_dict=True
 			)
@@ -1078,14 +1079,16 @@ def get_items(pos_profile, search_term=None, item_group=None, start=0, limit=20)
 			items = frappe.db.sql(query, tuple(params), as_dict=1)
 
 			# If no items found, try searching by serial number
+			# ONLY search within the POS Profile's warehouse
 			if not items:
 				serial_items = frappe.db.sql("""
 					SELECT DISTINCT sn.item_code
 					FROM `tabSerial No` sn
 					WHERE sn.name LIKE %s
 						AND sn.status = 'Active'
+						AND sn.warehouse = %s
 					LIMIT 10
-				""", (f"%{search_term}%",), as_dict=1)
+				""", (f"%{search_term}%", pos_profile_doc.warehouse), as_dict=1)
 
 				if serial_items:
 					item_codes = [s.item_code for s in serial_items]

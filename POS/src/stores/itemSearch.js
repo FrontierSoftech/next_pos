@@ -444,7 +444,17 @@ export const useItemSearchStore = defineStore("itemSearch", () => {
 			}
 		}
 
-		// Step 4: Inject live stock quantities (optimized)
+		// Step 4: Hide zero stock items EXCEPT for "Insurance All" item group
+		// Apply to search results and "All Items" tab (no filters)
+		if (searchTerm.value?.trim() || (!selectedItemGroup.value && (!profileItemGroups.value || profileItemGroups.value.length === 0))) {
+			list = list.filter(i => {
+				const qty = i.actual_qty ?? i.stock_qty ?? 0
+				if (qty > 0) return true
+				return i.item_group === 'Insurance All'
+			})
+		}
+
+		// Step 5: Inject live stock quantities (optimized)
 		// Use a simple map operation - O(n) complexity
 		const itemsWithStock = list.map(item => {
 			// Get display stock (includes reservations from cart)
@@ -1224,7 +1234,18 @@ export const useItemSearchStore = defineStore("itemSearch", () => {
 				pos_profile: posProfile.value,
 			})
 
-			const item = result?.message || result
+			let item = result?.message || result
+
+			// Apply zero-stock filter to barcode search results
+			// Allow "Insurance All" items even with zero stock
+			if (item) {
+				const qty = item.actual_qty ?? item.stock_qty ?? 0
+				if (qty <= 0 && item.item_group !== 'Insurance All') {
+					log.debug("Barcode search: zero stock item blocked", { item_code: item.item_code })
+					return null
+				}
+			}
+
 			return item
 		} catch (error) {
 			log.error("Store searchByBarcode error", error)
