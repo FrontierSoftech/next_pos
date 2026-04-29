@@ -376,7 +376,14 @@ def search_by_barcode(barcode, pos_profile):
 			frappe.throw(_("POS Profile is required"))
 
 		# Get POS Profile details FIRST (needed for warehouse in serial lookup)
-		pos_profile_doc = frappe.get_cached_doc("POS Profile", pos_profile)
+		pos_profile_doc = None
+		try:
+			pos_profile_doc = frappe.get_cached_doc("POS Profile", pos_profile)
+		except Exception:
+			frappe.throw(_("Invalid POS Profile: {0}").format(pos_profile))
+
+		if not pos_profile_doc:
+			frappe.throw(_("POS Profile not found: {0}").format(pos_profile))
 
 		# Validate POS Profile has required fields
 		if not pos_profile_doc.warehouse:
