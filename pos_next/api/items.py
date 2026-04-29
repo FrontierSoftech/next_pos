@@ -375,6 +375,13 @@ def search_by_barcode(barcode, pos_profile):
 		if not pos_profile:
 			frappe.throw(_("POS Profile is required"))
 
+		# Get POS Profile details FIRST (needed for warehouse in serial lookup)
+		pos_profile_doc = frappe.get_cached_doc("POS Profile", pos_profile)
+
+		# Validate POS Profile has required fields
+		if not pos_profile_doc.warehouse:
+			frappe.throw(_("Warehouse not set in POS Profile {0}").format(pos_profile))
+
 		# Search for item by barcode - also get UOM if barcode has specific UOM
 		barcode_data = frappe.db.get_value(
 			"Item Barcode", {"barcode": barcode}, ["parent", "uom"], as_dict=True
@@ -393,33 +400,26 @@ def search_by_barcode(barcode, pos_profile):
 				item_code = frappe.db.get_value("Item", {"custom_alias": barcode, "disabled": 0})
 
 			# If still not found, try searching in Serial No table
-		# ONLY search within the POS Profile's warehouse
-		found_serial_no = None
-		if not item_code:
-			serial_data = frappe.db.get_value(
-				"Serial No",
-				{"name": barcode, "status": "Active", "warehouse": pos_profile_doc.warehouse},
-				["item_code", "warehouse"],
-				as_dict=True
-			)
-			if serial_data:
-				item_code = serial_data.item_code
-				found_serial_no = barcode  # Store the serial number to pre-select it
-				barcode_uom = None
+			# ONLY search within the POS Profile's warehouse
+			found_serial_no = None
+			if not item_code:
+				serial_data = frappe.db.get_value(
+					"Serial No",
+					{"name": barcode, "status": "Active", "warehouse": pos_profile_doc.warehouse},
+					["item_code", "warehouse"],
+					as_dict=True
+				)
+				if serial_data:
+					item_code = serial_data.item_code
+					found_serial_no = barcode  # Store the serial number to pre-select it
+					barcode_uom = None
 
 		if not item_code:
 			frappe.throw(_("Item with barcode {0} not found").format(barcode))
 
-		# Get POS Profile details
-		pos_profile_doc = frappe.get_cached_doc("POS Profile", pos_profile)
-
-		# Validate POS Profile has required fields
-		if not pos_profile_doc.warehouse:
-			frappe.throw(_("Warehouse not set in POS Profile {0}").format(pos_profile))
+		# Validate POS Profile has required fields (moved up)
 		if not pos_profile_doc.selling_price_list:
 			frappe.throw(_("Selling Price List not set in POS Profile {0}").format(pos_profile))
-		if not pos_profile_doc.company:
-			frappe.throw(_("Company not set in POS Profile {0}").format(pos_profile))
 
 		# Get item doc
 		item_doc = frappe.get_cached_doc("Item", item_code)

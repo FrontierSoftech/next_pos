@@ -74,21 +74,13 @@ class NetworkMonitor {
 
 	/**
 	 * Start monitoring network connectivity
+	 * DISABLED: Offline billing is completely disabled
 	 */
 	start() {
 		if (this._isMonitoring) return
 
-		this._isMonitoring = true
-		this._initBroadcastChannel()
-		this._initVisibilityListener()
-
-		// Initial ping
-		this._performPing()
-
-		// Start adaptive interval
-		this._scheduleNextPing()
-
-		log.info('Network monitor started')
+		// Offline billing disabled - no network monitoring needed
+		log.info('Network monitor disabled (offline billing disabled)')
 	}
 
 	/**
@@ -505,9 +497,10 @@ class OfflineStateManager {
 
 	/**
 	 * Get current offline status
+	 * DISABLED: Offline billing is completely disabled
 	 */
 	get isOffline() {
-		return this._manualOffline || !this._browserOnline || !this._serverOnline
+		return false
 	}
 
 	/**
