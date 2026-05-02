@@ -53,6 +53,9 @@
 						<p v-if="nonGstPhoneError" class="mt-1 text-xs text-red-600">
 							{{ nonGstPhoneError }}
 						</p>
+						<p v-if="nonGstPhoneStatus" class="mt-1 text-xs" :class="nonGstPhoneStatus.includes('Warning') ? 'text-red-600' : 'text-green-600'">
+							{{ nonGstPhoneStatus }}
+						</p>
 					</div>
 
 					<!-- Customer Name (maps to custom_party_name_for_print) -->
@@ -553,6 +556,8 @@ const gstinStatus = ref("")
 
 // Non-GST phone validation
 const nonGstPhoneError = ref("")
+const nonGstPhoneStatus = ref("")
+const checkingDuplicatePhone = ref(false)
 
 // Indian States for GST
 const indianStates = ref([
@@ -640,6 +645,7 @@ const filteredAddressCountries = computed(() => {
 
 const canSubmit = computed(() => {
 	if (!hasPermission.value) return false
+	if (checkingDuplicatePhone.value) return false
 
 	// In edit mode, just need minimal data
 	if (isEditMode.value) {
@@ -653,19 +659,21 @@ const canSubmit = computed(() => {
 	if (formMode.value === "non-gst") {
 		// Non-GST validation: phone (10 digits), email, profession, address_line1
 		const phoneValid = /^\d{10}$/.test(nonGstData.value.phone_number)
-		const emailValid = nonGstData.value.email_id && 
+		const emailValid = nonGstData.value.email_id &&
 			nonGstData.value.email_id.trim() !== "" &&
 			/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(nonGstData.value.email_id.trim())
+		const noDuplicate = !nonGstPhoneStatus.value.includes("Warning")
 		return (
 			phoneValid &&
 			emailValid &&
 			nonGstData.value.custom_profession &&
-			nonGstData.value.address_line1
+			nonGstData.value.address_line1 &&
+			noDuplicate
 		)
 	} else {
 		// GST validation: gstin, party_name, profession, address_line1, city, state, phone, email
 		const phoneValid = gstData.value.mobile_no && gstData.value.mobile_no.trim() !== ""
-		const emailValid = gstData.value.email_id && 
+		const emailValid = gstData.value.email_id &&
 			gstData.value.email_id.trim() !== "" &&
 			/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(gstData.value.email_id.trim())
 		return (
@@ -686,10 +694,33 @@ const canSubmit = computed(() => {
 // Non-GST Phone Validation
 // =============================================================================
 
+const checkDuplicatePhoneNumber = async (phoneNumber) => {
+	checkingDuplicatePhone.value = true
+	nonGstPhoneStatus.value = ""
+
+	try {
+		const result = await call("pos_next.api.customers.check_duplicate_phone_number_for_pos", {
+			phone_number: phoneNumber,
+		})
+
+		if (result && result.exists) {
+			nonGstPhoneStatus.value = __("Warning: Phone number already registered with customer {0}", [result.customer_name || result.customer])
+		} else {
+			nonGstPhoneStatus.value = ""
+		}
+	} catch (_e) {
+		// duplicate check is non-critical, ignore errors
+		nonGstPhoneStatus.value = ""
+	} finally {
+		checkingDuplicatePhone.value = false
+	}
+}
+
 const validateNonGstPhone = () => {
 	const phone = nonGstData.value.phone_number
 	if (!phone) {
 		nonGstPhoneError.value = ""
+		nonGstPhoneStatus.value = ""
 		return
 	}
 
@@ -699,10 +730,17 @@ const validateNonGstPhone = () => {
 
 	if (digitsOnly.length > 0 && digitsOnly.length !== 10) {
 		nonGstPhoneError.value = __("Phone number must be exactly 10 digits")
+		nonGstPhoneStatus.value = ""
 	} else if (digitsOnly.length === 10 && !/^[6-9]\d{9}$/.test(digitsOnly)) {
 		nonGstPhoneError.value = __("Please enter a valid Indian mobile number")
+		nonGstPhoneStatus.value = ""
+	} else if (digitsOnly.length === 10) {
+		nonGstPhoneError.value = ""
+		// Check for duplicate phone number
+		checkDuplicatePhoneNumber(digitsOnly)
 	} else {
 		nonGstPhoneError.value = ""
+		nonGstPhoneStatus.value = ""
 	}
 }
 
@@ -1310,6 +1348,7 @@ const resetForm = () => {
 	})
 	nonGstStateSearchQuery.value = ""
 	nonGstPhoneError.value = ""
+	nonGstPhoneStatus.value = ""
 
 	// Reset GST data
 	Object.assign(gstData.value, {

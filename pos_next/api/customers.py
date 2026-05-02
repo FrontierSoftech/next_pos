@@ -347,3 +347,36 @@ def get_customer_default_account(customer, company):
             "Get Customer Default Account Error",
         )
         return "Debtors - IC"
+
+
+@frappe.whitelist()
+def check_duplicate_phone_number_for_pos(phone_number):
+    """
+    Check if a phone number is already registered with an existing Customer.
+    POS-safe: no desk-access check, read-only DB query.
+
+    Phone number is stored with country code prefix (e.g., '+91-9876543210').
+
+    Returns dict:
+      { exists: bool, customer: str|None, customer_name: str|None }
+    """
+    if not phone_number:
+        return {"exists": False}
+
+    phone_number = phone_number.strip()
+
+    existing = frappe.db.get_value(
+        "Customer",
+        {"mobile_no": ["like", f"%{phone_number}"], "disabled": 0},
+        ["name", "customer_name"],
+        as_dict=True,
+    )
+
+    if existing:
+        return {
+            "exists": True,
+            "customer": existing.name,
+            "customer_name": existing.customer_name,
+        }
+
+    return {"exists": False}

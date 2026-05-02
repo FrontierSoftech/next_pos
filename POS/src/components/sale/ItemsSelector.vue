@@ -1213,14 +1213,15 @@ function formatCurrency(amount) {
 }
 
 // Show warehouse availability dialog
+// DISABLED: Click on stock badge to view warehouse availability
 function showWarehouseAvailability(item) {
-	warehouseDialogItem.value = {
-		itemCode: item.item_code,
-		itemName: item.item_name,
-		uom: item.uom || item.stock_uom || 'Nos',
-		company: settingsStore.company
-	}
-	showWarehouseDialog.value = true
+	// warehouseDialogItem.value = {
+	// 	itemCode: item.item_code,
+	// 	itemName: item.item_name,
+	// 	uom: item.uom || item.stock_uom || 'Nos',
+	// 	company: settingsStore.company
+	// }
+	// showWarehouseDialog.value = true
 }
 
 // Expose methods for parent component

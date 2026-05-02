@@ -59,6 +59,7 @@
 						</svg>
 						<span>{{ __('Invoice History') }}</span>
 					</button>
+					<!-- OFFLINE BILLING DISABLED
 					<button
 						v-if="offlineStore.pendingInvoicesCount > 0"
 						@click="uiStore.showOfflineInvoicesDialog = true; offlineStore.loadPendingInvoices()"
@@ -72,6 +73,7 @@
 							{{ offlineStore.pendingInvoicesCount }}
 						</span>
 					</button>
+					-->
 					<button
 						@click="uiStore.showReturnDialog = true"
 						class="w-full text-start px-4 py-2.5 text-sm text-gray-700 hover:bg-red-50 flex items-center gap-3 transition-colors"
